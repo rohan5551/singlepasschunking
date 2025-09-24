@@ -365,7 +365,10 @@ async def get_page_preview_api(
 async def submit_pipeline_task(
     file: UploadFile = File(...),
     batch_size: int = Form(4),
-    overlap_pages: int = Form(0)
+    overlap_pages: int = Form(0),
+    prompt: Optional[str] = Form(None),
+    model: Optional[str] = Form(None),
+    temperature: Optional[float] = Form(None)
 ):
     """Submit a file for pipeline processing"""
     try:
@@ -389,13 +392,19 @@ async def submit_pipeline_task(
         task_id = processing_manager.submit_task(
             file_path=temp_path,
             source_type="upload",
-            config=config
+            config=config,
+            prompt=prompt,
+            model=model,
+            temperature=temperature
         )
 
         return JSONResponse(content={
             "task_id": task_id,
             "filename": file.filename,
-            "config": config.to_dict()
+            "config": config.to_dict(),
+            "prompt": prompt,
+            "model": model,
+            "temperature": temperature
         })
 
     except Exception as e:

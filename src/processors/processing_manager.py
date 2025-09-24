@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import os
 import uuid
@@ -15,6 +14,8 @@ from ..models.batch_models import (
 )
 from .pdf_processor import PDFProcessor
 from .pdf_splitter import PDFSplitter
+from .lmm_processor import LMMProcessor
+from .context_manager import ContextManager
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -50,6 +51,8 @@ class ProcessingManager:
         # Processing components
         self.pdf_processor = PDFProcessor()
         self.pdf_splitter = PDFSplitter()
+        self.lmm_processor = LMMProcessor()
+        self.context_manager = ContextManager()
 
         # Event callbacks for UI updates
         self.progress_callbacks: List[Callable[[str, float, str], None]] = []
@@ -80,7 +83,10 @@ class ProcessingManager:
 
     def submit_task(self, file_path: str, source_type: str = "local",
                    config: Optional[SplitConfiguration] = None,
-                   s3_url: Optional[str] = None) -> str:
+                   s3_url: Optional[str] = None,
+                   prompt: Optional[str] = None,
+                   model: Optional[str] = None,
+                   temperature: Optional[float] = None) -> str:
         """
         Submit a new processing task
 
@@ -109,14 +115,26 @@ class ProcessingManager:
             task_id=task_id,
             document=placeholder_document,
             config=split_config,
-            status=ProcessingStage.UPLOAD
+            status=ProcessingStage.UPLOAD,
+            prompt=prompt,
+            model=model or self.lmm_processor.DEFAULT_MODEL,
+            temperature=temperature if temperature is not None else self.lmm_processor.temperature
         )
 
         with self._lock:
             self.active_tasks[task_id] = task
 
         # Queue for processing
-        self.task_queue.put((task_id, file_path, source_type, s3_url, split_config))
+        self.task_queue.put((
+            task_id,
+            file_path,
+            source_type,
+            s3_url,
+            split_config,
+            prompt,
+            model,
+            temperature,
+        ))
 
         logger.info(f"Submitted task {task_id} for {file_path}")
         return task_id
@@ -172,12 +190,13 @@ class ProcessingManager:
                 except Empty:
                     continue
 
-                task_id, file_path, source_type, s3_url, config = task_data
+                task_id, file_path, source_type, s3_url, config, prompt, model, temperature = task_data
 
                 # Submit to thread pool
                 future = self.executor.submit(
                     self._process_single_task,
-                    task_id, file_path, source_type, s3_url, config
+                    task_id, file_path, source_type, s3_url, config,
+                    prompt, model, temperature
                 )
 
                 # Don't block on individual tasks
@@ -188,7 +207,9 @@ class ProcessingManager:
 
     def _process_single_task(self, task_id: str, file_path: str,
                            source_type: str, s3_url: Optional[str],
-                           config: SplitConfiguration):
+                           config: SplitConfiguration,
+                           prompt: Optional[str], model: Optional[str],
+                           temperature: Optional[float]):
         """Process a single task through the pipeline"""
         temp_file_to_cleanup = None
 
@@ -218,6 +239,10 @@ class ProcessingManager:
 
             # Update task with real document
             task.document = document
+            task.model = model or self.lmm_processor.DEFAULT_MODEL
+            task.prompt = prompt
+            task.temperature = temperature if temperature is not None else self.lmm_processor.temperature
+            self.context_manager.reset_context(document.file_path)
             self._update_task_progress(task_id, ProcessingStage.PDF_PROCESSING, 40.0)
 
             # Stage 2: Splitting
@@ -227,7 +252,58 @@ class ProcessingManager:
             task.batches = batching_result.batches
             self._update_task_progress(task_id, ProcessingStage.SPLITTING, 80.0)
 
-            # Stage 3: Completion
+            # Stage 3: LMM Processing
+            if task.batches:
+                total_batches = len(task.batches)
+                for index, batch in enumerate(task.batches, start=1):
+                    try:
+                        batch.status = BatchStatus.PROCESSING
+                        context_payload = self.context_manager.build_context_payload(document.file_path)
+                        lmm_result = self.lmm_processor.process_batch(
+                            batch,
+                            context=context_payload,
+                            prompt=task.prompt,
+                            model=task.model,
+                            temperature=task.temperature,
+                        )
+
+                        batch.lmm_output = lmm_result.get("raw_output")
+                        batch.chunk_summary = lmm_result.get("chunks", [])
+                        batch.context_snapshot = lmm_result.get("context", {})
+                        batch.prompt_used = lmm_result.get("prompt_used")
+                        batch.processing_time = lmm_result.get("processing_time")
+                        batch.processed_at = datetime.now()
+                        batch.status = BatchStatus.COMPLETED
+
+                        # Update context for next batch
+                        self.context_manager.update_context(
+                            document.file_path,
+                            last_chunks=lmm_result.get("last_chunks"),
+                            heading_hierarchy=lmm_result.get("heading_hierarchy"),
+                            continuation_metadata=lmm_result.get("continuation_metadata"),
+                        )
+
+                        progress = 80.0 + (index / total_batches) * 15.0
+                        self._update_task_progress(task_id, ProcessingStage.LMM_PROCESSING, progress)
+                    except Exception as batch_error:
+                        batch.status = BatchStatus.ERROR
+                        batch.error_message = str(batch_error)
+                        logger.error(
+                            "Error processing batch %s for task %s: %s",
+                            batch.batch_id,
+                            task_id,
+                            batch_error,
+                        )
+                        raise
+
+                task.context_state = self.context_manager.get_context(document.file_path)
+            else:
+                self._update_task_progress(task_id, ProcessingStage.LMM_PROCESSING, 90.0)
+
+            # Stage 4: Chunking completion
+            self._update_task_progress(task_id, ProcessingStage.CHUNKING, 95.0)
+
+            # Stage 5: Completion
             self._update_task_progress(task_id, ProcessingStage.COMPLETED, 100.0)
             task.completed_at = datetime.now()
 
@@ -258,6 +334,8 @@ class ProcessingManager:
                     logger.debug(f"Cleaned up temporary file: {temp_file_to_cleanup}")
                 except Exception as e:
                     logger.error(f"Error cleaning up temp file {temp_file_to_cleanup}: {e}")
+            if 'document' in locals():
+                self.context_manager.drop_context(document.file_path)
 
     def _update_task_progress(self, task_id: str, stage: ProcessingStage, progress: float):
         """Update task progress and notify callbacks"""

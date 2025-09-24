@@ -879,33 +879,34 @@ function createBatchesContent(task) {
                 <h6><i class="fas fa-layer-group me-2"></i>Document Batches</h6>
                 <p class="text-muted mb-0">Select a batch to view its pages • ${task.batches.length} batches total</p>
             </div>
-            
-            <!-- Batch Tabs -->
-            <div class="batch-tabs-container">
-                <div class="batch-tabs" role="tablist">
-                    ${task.batches.map((batch, index) => `
-                        <button class="batch-tab ${index === 0 ? 'active' : ''}" 
-                                data-batch-id="${batch.batch_id}"
-                                data-batch-index="${index}"
-                                onclick="switchBatchTab('${task.task_id}', '${batch.batch_id}', ${index})"
-                                role="tab">
-                            <div class="batch-tab-header">
-                                <span class="batch-tab-title">Batch ${batch.batch_number}</span>
-                                <span class="batch-tab-pages">Pages ${batch.start_page}-${batch.end_page}</span>
-                            </div>
-                            <div class="batch-tab-count">${batch.page_count}</div>
-                        </button>
-                    `).join('')}
-                </div>
-            </div>
-            
-            <!-- Batch Content -->
-            <div class="batch-content-container" id="batchContentContainer">
-                <div class="batch-loading">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Loading...</span>
+
+            <div class="row g-4 align-items-stretch batch-simple-layout">
+                <div class="col-lg-4">
+                    <div class="list-group batch-list" id="batchList">
+                        ${task.batches.map((batch, index) => `
+                            <button type="button"
+                                    class="list-group-item list-group-item-action batch-list-button ${index === 0 ? 'active' : ''}"
+                                    data-batch-id="${batch.batch_id}"
+                                    data-batch-index="${index}"
+                                    onclick="selectBatch('${task.task_id}', '${batch.batch_id}', this)">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <div class="fw-semibold">Batch ${batch.batch_number}</div>
+                                        <small class="text-muted">Pages ${batch.start_page} - ${batch.end_page}</small>
+                                    </div>
+                                    <span class="badge bg-primary rounded-pill">${batch.page_count}</span>
+                                </div>
+                            </button>
+                        `).join('')}
                     </div>
-                    <p class="mt-2 text-muted">Loading batch pages...</p>
+                </div>
+                <div class="col-lg-8">
+                    <div class="batch-pages-container" id="batchPagesContainer">
+                        <div class="text-center text-muted py-5" id="batchPagesPlaceholder">
+                            <i class="fas fa-layer-group fa-2x mb-3"></i>
+                            <p class="mb-0">Select a batch to view its pages</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1827,17 +1828,20 @@ function formatDateTime(isoString) {
     return date.toLocaleString();
 }
 
-// Batch tab switching functionality
-async function switchBatchTab(taskId, batchId, batchIndex) {
-    try {
-        // Update active tab
-        document.querySelectorAll('.batch-tab').forEach(tab => {
-            tab.classList.remove('active');
-        });
-        document.querySelector(`[data-batch-index="${batchIndex}"]`).classList.add('active');
+// Batch selection functionality
+async function selectBatch(taskId, batchId, buttonElement) {
+    const container = document.getElementById('batchPagesContainer');
+    if (!container) {
+        console.warn('Batch pages container not found');
+        return;
+    }
 
-        // Show loading state
-        const container = document.getElementById('batchContentContainer');
+    try {
+        document.querySelectorAll('.batch-list-button').forEach(btn => btn.classList.remove('active'));
+        if (buttonElement) {
+            buttonElement.classList.add('active');
+        }
+
         container.innerHTML = `
             <div class="batch-loading">
                 <div class="spinner-border text-primary" role="status">
@@ -1847,12 +1851,11 @@ async function switchBatchTab(taskId, batchId, batchIndex) {
             </div>
         `;
 
-        // Fetch and display batch content
-        await loadBatchContent(taskId, batchId);
+        const batchData = await loadBatchContent(taskId, batchId);
+        container.innerHTML = renderBatchPages(batchData);
 
     } catch (error) {
-        console.error('Error switching batch tab:', error);
-        const container = document.getElementById('batchContentContainer');
+        console.error('Error selecting batch:', error);
         container.innerHTML = `
             <div class="alert alert-danger">
                 <i class="fas fa-exclamation-triangle me-2"></i>
@@ -1863,70 +1866,70 @@ async function switchBatchTab(taskId, batchId, batchIndex) {
 }
 
 async function loadBatchContent(taskId, batchId) {
-    try {
-        const response = await fetch(`/api/pipeline/tasks/${taskId}/batches/${batchId}/images`);
-        if (!response.ok) {
-            throw new Error('Failed to load batch images');
-        }
-        
-        const batchData = await response.json();
-        const container = document.getElementById('batchContentContainer');
-        
-        container.innerHTML = `
-            <div class="batch-pages-section">
-                <div class="batch-info-bar">
-                    <div class="batch-info-bar-left">
-                        <h6 class="mb-0">
-                            <i class="fas fa-layer-group text-primary me-2"></i>
-                            Batch ${batchData.batch_number} - Pages ${batchData.start_page} to ${batchData.end_page}
-                        </h6>
-                        <small class="text-muted">${batchData.pages.length} pages • Click any image to enlarge</small>
-                    </div>
-                    <div class="batch-info-bar-right">
-                        <span class="badge bg-success">Ready for Processing</span>
-                    </div>
-                </div>
-                
-                <div class="batch-pages-grid-inline">
-                    ${batchData.pages.map(page => `
-                        <div class="batch-page-item-inline">
-                            <div class="batch-page-image-container">
-                                <img src="data:image/png;base64,${page.image}" 
-                                     alt="Page ${page.page_number}" 
-                                     class="batch-page-image-inline"
-                                     onclick="openImageModal(this.src, 'Page ${page.page_number}')">
-                                <div class="batch-page-overlay">
-                                    <i class="fas fa-search-plus"></i>
-                                </div>
-                            </div>
-                            <div class="batch-page-label">
-                                <i class="fas fa-file-alt me-1"></i>
-                                Page ${page.page_number}
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
-        `;
+    const response = await fetch(`/api/pipeline/tasks/${taskId}/batches/${batchId}/images`);
+    if (!response.ok) {
+        throw new Error('Failed to load batch images');
+    }
 
-    } catch (error) {
-        console.error('Error loading batch content:', error);
-        const container = document.getElementById('batchContentContainer');
-        container.innerHTML = `
-            <div class="alert alert-danger">
-                <i class="fas fa-exclamation-triangle me-2"></i>
-                Error loading batch images: ${error.message}
+    return response.json();
+}
+
+function renderBatchPages(batchData) {
+    if (!batchData.pages || batchData.pages.length === 0) {
+        return `
+            <div class="text-center text-muted py-5">
+                <i class="fas fa-file-alt fa-2x mb-3"></i>
+                <p class="mb-0">No pages found in this batch</p>
             </div>
         `;
     }
+
+    return `
+        <div class="batch-pages-section">
+            <div class="batch-info-bar">
+                <div class="batch-info-bar-left">
+                    <h6 class="mb-0">
+                        <i class="fas fa-layer-group text-primary me-2"></i>
+                        Batch ${batchData.batch_number} - Pages ${batchData.start_page} to ${batchData.end_page}
+                    </h6>
+                    <small class="text-muted">${batchData.pages.length} pages • Click any image to enlarge</small>
+                </div>
+                <div class="batch-info-bar-right">
+                    <span class="badge bg-success">Ready for Processing</span>
+                </div>
+            </div>
+
+            <div class="batch-pages-grid-inline">
+                ${batchData.pages.map(page => `
+                    <div class="batch-page-item-inline">
+                        <div class="batch-page-image-container">
+                            <img src="data:image/png;base64,${page.image}"
+                                 alt="Page ${page.page_number}"
+                                 class="batch-page-image-inline"
+                                 onclick="openImageModal(this.src, 'Page ${page.page_number}')">
+                            <div class="batch-page-overlay">
+                                <i class="fas fa-search-plus"></i>
+                            </div>
+                        </div>
+                        <div class="batch-page-label">
+                            <i class="fas fa-file-alt me-1"></i>
+                            Page ${page.page_number}
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
 }
 
 // Auto-load first batch when batches content is created
 function initializeBatchesContent(task) {
     if (task.batches && task.batches.length > 0) {
-        // Load the first batch by default
         setTimeout(() => {
-            loadBatchContent(task.task_id, task.batches[0].batch_id);
+            const firstButton = document.querySelector('.batch-list-button');
+            if (firstButton) {
+                selectBatch(task.task_id, task.batches[0].batch_id, firstButton);
+            }
         }, 100);
     }
 }

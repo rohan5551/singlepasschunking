@@ -1,0 +1,348 @@
+{% extends "base.html" %}
+
+{% block title %}Human-in-the-Loop Processing{% endblock %}
+
+{% block content %}
+<div class="row" id="humanLoopContainer" data-session-id="{{ session_id }}">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h2 class="mb-1">
+                    <i class="fas fa-user-cog me-2 text-primary"></i>
+                    Human-in-the-Loop Workflow
+                </h2>
+                <p class="text-muted mb-0">Review each stage and create custom batches before finalising the split.</p>
+            </div>
+            <a href="/" class="btn btn-outline-primary">
+                <i class="fas fa-arrow-left me-2"></i>
+                Back to Uploads
+            </a>
+        </div>
+    </div>
+
+    <!-- Stepper Navigation -->
+    <div class="col-12 mb-4">
+        <div class="manual-stepper">
+            <div class="step-item active" data-step="1">
+                <span class="step-number">1</span>
+                <span class="step-label">Review Document</span>
+            </div>
+            <div class="step-connector"></div>
+            <div class="step-item" data-step="2">
+                <span class="step-number">2</span>
+                <span class="step-label">Create Batches</span>
+            </div>
+            <div class="step-connector"></div>
+            <div class="step-item" data-step="3">
+                <span class="step-number">3</span>
+                <span class="step-label">Summary</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Step 1 -->
+    <div class="col-12 manual-step" data-step="1">
+        <div class="alert alert-primary d-flex align-items-center" role="alert">
+            <i class="fas fa-info-circle fa-lg me-2"></i>
+            <div>
+                Confirm the document details and quickly browse the generated page previews. When you are ready, move to the batching step.
+            </div>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-lg-6">
+                <div class="card h-100">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-file-alt me-2"></i>
+                            Document Information
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-sm">
+                            <tr>
+                                <td><strong>File Path:</strong></td>
+                                <td><code>{{ document_info.file_path }}</code></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Source:</strong></td>
+                                <td>
+                                    <span class="badge {% if document_info.source_type == 'local' %}bg-primary{% else %}bg-warning text-dark{% endif %}">
+                                        {{ document_info.source_type|upper }}
+                                    </span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Total Pages:</strong></td>
+                                <td>{{ document_info.total_pages }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>File Size:</strong></td>
+                                <td>{{ document_info.file_size_mb or 'Unknown' }} MB</td>
+                            </tr>
+                        </table>
+
+                        {% if document_info.metadata %}
+                        <h6 class="mt-4">Metadata</h6>
+                        <table class="table table-sm table-striped">
+                            {% for key, value in document_info.metadata.items() %}
+                            <tr>
+                                <td><strong>{{ key|title }}:</strong></td>
+                                <td>{{ value if value else 'N/A' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </table>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-6">
+                <div class="card h-100">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-chart-bar me-2"></i>
+                            Quick Stats
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row text-center">
+                            <div class="col-4">
+                                <div class="stat-item">
+                                    <i class="fas fa-file-alt fa-2x text-primary mb-2"></i>
+                                    <h4>{{ document_info.total_pages }}</h4>
+                                    <small class="text-muted">Pages</small>
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <div class="stat-item">
+                                    <i class="fas fa-weight-hanging fa-2x text-success mb-2"></i>
+                                    <h4>{{ document_info.file_size_mb or 'N/A' }}</h4>
+                                    <small class="text-muted">MB</small>
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <div class="stat-item">
+                                    <i class="fas fa-images fa-2x text-warning mb-2"></i>
+                                    <h4>{{ page_images|length }}</h4>
+                                    <small class="text-muted">Images</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mt-4">
+            <div class="card-header bg-light">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-images me-2"></i>
+                        Preview Pages
+                    </h5>
+                    <span class="text-muted small">Click any page to open a larger preview.</span>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row" id="manualPreviewGallery">
+                    {% for page_img in page_images %}
+                    <div class="col-xl-2 col-lg-3 col-md-4 col-sm-6 mb-4">
+                        <div class="card border-light shadow-sm page-card">
+                            <div class="card-header text-center py-2 bg-light">
+                                <small class="text-muted fw-bold">Page {{ page_img.page_number }}</small>
+                            </div>
+                            <div class="card-body p-2">
+                                <img src="data:image/png;base64,{{ page_img.image }}"
+                                     class="img-fluid border rounded page-image"
+                                     alt="Page {{ page_img.page_number }}"
+                                     onclick="openImageModal({{ page_img.page_number }}, '{{ page_img.image }}')">
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-end mt-4">
+            <button class="btn btn-primary btn-lg" id="proceedToBatchingBtn">
+                Proceed to Batching <i class="fas fa-arrow-right ms-2"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Step 2 -->
+    <div class="col-12 manual-step" data-step="2" style="display: none;">
+        <div class="alert alert-info d-flex align-items-center" role="alert">
+            <i class="fas fa-layer-group fa-lg me-2"></i>
+            <div>
+                Select one or more pages and add them to a batch. Create as many batches as you need (for example, one per chapter).
+            </div>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-xl-8">
+                <div class="card">
+                    <div class="card-header bg-light">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">
+                                <i class="fas fa-file-export me-2"></i>
+                                Select Pages for Batches
+                            </h5>
+                            <span class="badge bg-secondary" id="selectedPagesCounter">0 pages selected</span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="row" id="manualPageGallery">
+                            {% for page_img in page_images %}
+                            <div class="col-xl-4 col-lg-6 col-md-6 col-sm-6 mb-4">
+                                <div class="manual-page-card card h-100" data-page-number="{{ page_img.page_number }}">
+                                    <div class="page-select-control">
+                                        <div class="form-check">
+                                            <input class="form-check-input page-checkbox" type="checkbox"
+                                                   value="{{ page_img.page_number }}"
+                                                   id="pageCheckbox{{ page_img.page_number }}"
+                                                   data-page-number="{{ page_img.page_number }}">
+                                            <label class="form-check-label" for="pageCheckbox{{ page_img.page_number }}">
+                                                Select
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="card-header text-center py-2 bg-light">
+                                        <small class="text-muted fw-bold">Page {{ page_img.page_number }}</small>
+                                    </div>
+                                    <div class="card-body p-2">
+                                        <img src="data:image/png;base64,{{ page_img.image }}"
+                                             class="img-fluid border rounded page-image"
+                                             alt="Page {{ page_img.page_number }}"
+                                             onclick="openImageModal({{ page_img.page_number }}, '{{ page_img.image }}')">
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-xl-4">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-layer-group me-2"></i>
+                            Batch Builder
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="batchNameInput" class="form-label">Batch Name</label>
+                            <input type="text" class="form-control" id="batchNameInput" placeholder="Batch 1">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Selected Pages</label>
+                            <div class="selected-pages-view" id="selectedPagesDisplay">
+                                No pages selected yet.
+                            </div>
+                        </div>
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-success" id="addBatchBtn">
+                                <i class="fas fa-plus-circle me-2"></i>
+                                Add Batch
+                            </button>
+                            <button class="btn btn-outline-secondary" id="clearSelectionBtn">
+                                <i class="fas fa-eraser me-2"></i>
+                                Clear Selection
+                            </button>
+                        </div>
+
+                        <hr>
+                        <h6 class="mb-3">Created Batches</h6>
+                        <div id="batchList" class="batch-list"></div>
+
+                        <div class="d-grid mt-4">
+                            <button class="btn btn-primary" id="finalizeBatchesBtn" disabled>
+                                <i class="fas fa-check me-2"></i>
+                                Finalise Batches
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn btn-link mt-3" id="backToReviewBtn">
+                    <i class="fas fa-arrow-left me-2"></i>
+                    Back to Review
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Step 3 -->
+    <div class="col-12 manual-step" data-step="3" style="display: none;">
+        <div class="alert alert-success d-flex align-items-center" role="alert">
+            <i class="fas fa-check-circle fa-lg me-2"></i>
+            <div>
+                Custom batches created successfully! Review the summary below or return to the dashboard to start another document.
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">
+                    <i class="fas fa-clipboard-list me-2"></i>
+                    Batch Summary
+                </h5>
+            </div>
+            <div class="card-body" id="batchSummaryContainer">
+                <p class="text-muted mb-0">Batches will appear here once finalised.</p>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-between mt-4">
+            <a href="/" class="btn btn-outline-primary">
+                <i class="fas fa-home me-2"></i>
+                Return Home
+            </a>
+            <a href="/pipeline" class="btn btn-primary">
+                <i class="fas fa-stream me-2"></i>
+                View Pipeline Dashboard
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Shared image preview modal -->
+<div class="modal fade" id="imageModal" tabindex="-1" aria-labelledby="imageModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="imageModalLabel">
+                    <i class="fas fa-search me-2"></i>
+                    <span id="modalPageTitle">Page Preview</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center">
+                <img id="modalImage" src="" alt="PDF Page" class="img-fluid">
+                <div class="mt-3 text-muted" id="pageCounter"></div>
+            </div>
+            <div class="modal-footer justify-content-between">
+                <div>
+                    <button class="btn btn-outline-secondary" id="prevPageBtn" onclick="navigatePage(-1)">
+                        <i class="fas fa-arrow-left me-2"></i>Previous
+                    </button>
+                    <button class="btn btn-outline-secondary" id="nextPageBtn" onclick="navigatePage(1)">
+                        Next<i class="fas fa-arrow-right ms-2"></i>
+                    </button>
+                </div>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+    {{ super() }}
+    <script src="/static/human_loop.js"></script>
+{% endblock %}

@@ -36,6 +36,10 @@ class PageBatch:
     processed_at: Optional[datetime] = None
     error_message: Optional[str] = None
     processing_time: Optional[float] = None
+    lmm_output: Optional[str] = None
+    chunk_summary: List[str] = field(default_factory=list)
+    context_snapshot: Dict[str, Any] = field(default_factory=dict)
+    prompt_used: Optional[str] = None
 
     def __post_init__(self):
         if not self.batch_id:
@@ -63,7 +67,11 @@ class PageBatch:
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "processed_at": self.processed_at.isoformat() if self.processed_at else None,
             "error_message": self.error_message,
-            "processing_time": self.processing_time
+            "processing_time": self.processing_time,
+            "lmm_output": self.lmm_output,
+            "chunk_summary": self.chunk_summary,
+            "context_snapshot": self.context_snapshot,
+            "prompt_used": self.prompt_used
         }
 
 @dataclass
@@ -101,6 +109,10 @@ class ProcessingTask:
     completed_at: Optional[datetime] = None
     error_message: Optional[str] = None
     batches: List[PageBatch] = field(default_factory=list)
+    prompt: Optional[str] = None
+    model: Optional[str] = None
+    temperature: float = 0.1
+    context_state: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         if not self.task_id:
@@ -147,7 +159,11 @@ class ProcessingTask:
                 "metadata": self.document.metadata
             },
             "config": self.config.to_dict(),
-            "batches": [batch.to_dict() for batch in self.batches]
+            "batches": [batch.to_dict() for batch in self.batches],
+            "prompt": self.prompt,
+            "model": self.model,
+            "temperature": self.temperature,
+            "context_state": self.context_state
         }
 
 @dataclass

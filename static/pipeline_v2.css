@@ -1620,6 +1620,59 @@
     border-color: rgba(255, 255, 255, 0.3);
 }
 
+/* Simplified batch list layout */
+.batch-simple-layout {
+    min-height: 320px;
+}
+
+.batch-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.batch-list-button {
+    border: none;
+    border-radius: 16px;
+    margin-bottom: 0.75rem;
+    background: #f8f9fc;
+    transition: all 0.2s ease-in-out;
+    box-shadow: 0 10px 24px rgba(15, 34, 58, 0.08);
+}
+
+.batch-list-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 16px 32px rgba(52, 152, 219, 0.18);
+}
+
+.batch-list-button.active {
+    background: linear-gradient(135deg, #3498db, #2980b9);
+    color: #fff;
+    box-shadow: 0 16px 32px rgba(52, 152, 219, 0.35);
+}
+
+.batch-list-button.active .text-muted {
+    color: rgba(255, 255, 255, 0.85) !important;
+}
+
+.batch-list-button.active .badge {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+}
+
+.batch-pages-container {
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 1.5rem;
+    border: 1px solid rgba(15, 34, 58, 0.08);
+    box-shadow: 0 18px 40px rgba(15, 34, 58, 0.12);
+    height: 100%;
+}
+
+.batch-pages-container .batch-pages-grid-inline {
+    margin-top: 1.5rem;
+}
+
 /* Batch Content Area */
 .batch-content-container {
     background: white;

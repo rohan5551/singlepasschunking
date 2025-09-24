@@ -15,7 +15,14 @@ from PIL import Image, ImageDraw, ImageFont
 import logging
 
 from src.processors import PDFProcessor, ProcessingManager
-from src.models import PDFDocument, SplitConfiguration, PageBatch
+from src.models import (
+    PDFDocument,
+    SplitConfiguration,
+    PageBatch,
+    ProcessingTask,
+    BatchStatus,
+    ProcessingStage,
+)
 
 load_dotenv()
 
@@ -47,6 +54,7 @@ class ManualSession:
     temp_file: Optional[str] = None
     created_at: datetime = field(default_factory=datetime.utcnow)
     batches: List[Dict[str, Any]] = field(default_factory=list)
+    display_name: Optional[str] = None
 
 
 manual_sessions: Dict[str, ManualSession] = {}
@@ -74,6 +82,7 @@ async def process_pdf(
         document = None
         temp_uploaded_path = None
         is_human_loop = process_mode == "human"
+        display_name: Optional[str] = None
 
         if file and file.filename:
             # Handle uploaded file
@@ -89,6 +98,7 @@ async def process_pdf(
             document = pdf_processor.load_from_local(temp_path)
             if is_human_loop:
                 temp_uploaded_path = temp_path
+                display_name = file.filename
             else:
                 # Clean up temp file
                 os.remove(temp_path)
@@ -96,10 +106,12 @@ async def process_pdf(
         elif s3_url:
             # Handle S3 URL
             document = pdf_processor.load_from_url(s3_url)
+            display_name = os.path.basename(s3_url)
 
         elif file_path:
             # Handle local file path
             document = pdf_processor.load_from_local(file_path)
+            display_name = os.path.basename(file_path)
 
         else:
             raise HTTPException(status_code=400, detail="Please provide a file, file path, or S3 URL")
@@ -128,7 +140,8 @@ async def process_pdf(
                 session_id=session_id,
                 document=document,
                 source_path=source_path,
-                temp_file=temp_uploaded_path
+                temp_file=temp_uploaded_path,
+                display_name=display_name or (os.path.basename(source_path) if source_path else None)
             )
 
             return templates.TemplateResponse("manual_processing.html", {
@@ -184,7 +197,8 @@ async def create_manual_batches(session_id: str, request: Request):
     page_lookup = {page.page_number: page for page in document.pages}
 
     created_batches: List[Dict[str, Any]] = []
-    assigned_pages: set[int] = set()
+    covered_pages: set[int] = set()
+    largest_batch_size = 0
 
     for index, batch_data in enumerate(batches_payload, start=1):
         if not isinstance(batch_data, dict):
@@ -203,8 +217,6 @@ async def create_manual_batches(session_id: str, request: Request):
                 raise HTTPException(status_code=400, detail=f"Page {page_number} is out of range")
             if page_number not in page_lookup:
                 raise HTTPException(status_code=400, detail=f"Page {page_number} is not available")
-            if page_number in assigned_pages:
-                raise HTTPException(status_code=400, detail=f"Page {page_number} has already been assigned")
 
         batch_name = (batch_data.get("name") or f"Batch {index}").strip()
         batch_pages = [page_lookup[p] for p in unique_pages]
@@ -220,7 +232,8 @@ async def create_manual_batches(session_id: str, request: Request):
             document_id=session.source_path or document.file_path
         )
 
-        assigned_pages.update(unique_pages)
+        covered_pages.update(unique_pages)
+        largest_batch_size = max(largest_batch_size, len(batch_pages))
         created_batches.append({
             "name": batch_name,
             "page_numbers": unique_pages,
@@ -228,6 +241,42 @@ async def create_manual_batches(session_id: str, request: Request):
         })
 
     session.batches = created_batches
+
+    completion_time = datetime.utcnow()
+
+    manual_config = SplitConfiguration(
+        batch_size=largest_batch_size or 1,
+        overlap_pages=0
+    )
+
+    for batch_info in created_batches:
+        batch_obj = batch_info["page_batch"]
+        batch_obj.status = BatchStatus.COMPLETED
+        batch_obj.processed_at = completion_time
+
+    manual_task = ProcessingTask(
+        task_id=f"manual_{uuid4().hex[:12]}",
+        document=document,
+        config=manual_config,
+        status=ProcessingStage.COMPLETED,
+        progress=100.0,
+        started_at=session.created_at,
+        completed_at=completion_time,
+        batches=[batch_info["page_batch"] for batch_info in created_batches]
+    )
+
+    manual_task.document.file_path = session.display_name or session.source_path or manual_task.document.file_path
+    manual_task.document.source_type = "manual"
+    metadata = dict(manual_task.document.metadata or {})
+    metadata["processing_mode"] = "human_loop"
+    if session.display_name:
+        metadata.setdefault("display_name", session.display_name)
+    if session.source_path:
+        metadata.setdefault("source_path", session.source_path)
+    manual_task.document.metadata = metadata
+
+    with processing_manager._lock:
+        processing_manager.completed_tasks[manual_task.task_id] = manual_task
 
     if session.temp_file and os.path.exists(session.temp_file):
         try:
@@ -237,7 +286,7 @@ async def create_manual_batches(session_id: str, request: Request):
 
     manual_sessions.pop(session_id, None)
 
-    total_assigned = len(assigned_pages)
+    total_assigned = len(covered_pages)
     unassigned_pages = max(document.total_pages - total_assigned, 0)
 
     response_batches = [

@@ -125,6 +125,34 @@
                             <i class="fas fa-chevron-right"></i>
                         </div>
 
+                        <div class="stage-container" data-stage="lmm_processing" onclick="selectStage('lmm_processing')">
+                            <div class="stage-icon">
+                                <i class="fas fa-robot"></i>
+                            </div>
+                            <div class="stage-info">
+                                <div class="stage-title">LMM Processing</div>
+                                <div class="stage-count" id="lmmStageCount">0</div>
+                            </div>
+                        </div>
+
+                        <div class="pipeline-arrow">
+                            <i class="fas fa-chevron-right"></i>
+                        </div>
+
+                        <div class="stage-container" data-stage="chunking" onclick="selectStage('chunking')">
+                            <div class="stage-icon">
+                                <i class="fas fa-object-group"></i>
+                            </div>
+                            <div class="stage-info">
+                                <div class="stage-title">Chunking</div>
+                                <div class="stage-count" id="chunkingStageCount">0</div>
+                            </div>
+                        </div>
+
+                        <div class="pipeline-arrow">
+                            <i class="fas fa-chevron-right"></i>
+                        </div>
+
                         <div class="stage-container" data-stage="completed" onclick="selectStage('completed')">
                             <div class="stage-icon">
                                 <i class="fas fa-check-circle"></i>
@@ -224,6 +252,32 @@
                     </div>
                 </div>
 
+                <!-- LMM Configuration -->
+                <div class="mt-4">
+                    <h6>Chunking Instructions</h6>
+                    <div class="mb-3">
+                        <label class="form-label" for="promptInput">Prompt for Chunking</label>
+                        <textarea class="form-control" id="promptInput" rows="6"
+                                  placeholder="Describe how the model should chunk the document">Use the document metadata and provided images to produce semantically meaningful chunks. Preserve heading hierarchy, add short summaries, and flag any content that continues into the next batch.</textarea>
+                        <div class="form-text">This prompt is sent along with each batch of page images.</div>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-8">
+                            <label class="form-label" for="modelSelect">Model</label>
+                            <select class="form-select" id="modelSelect">
+                                <option value="google/gemini-2.5-pro-exp" selected>Gemini 2.5 Pro (OpenRouter)</option>
+                                <option value="google/gemini-2.0-flash-001">Gemini 2.0 Flash (OpenRouter)</option>
+                            </select>
+                            <div class="form-text">Select a multimodal model that supports image inputs.</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="temperatureInput">Temperature</label>
+                            <input type="number" class="form-control" id="temperatureInput" value="0.1" min="0" max="1" step="0.05">
+                            <div class="form-text">Lower values keep outputs more deterministic.</div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- File List -->
                 <div class="mt-4" id="fileListContainer" style="display: none;">
                     <h6>Selected Files</h6>
@@ -253,6 +307,8 @@ const STAGES = {
     upload: { title: 'Upload Queue', description: 'Documents waiting to be processed', icon: 'fas fa-upload' },
     pdf_processing: { title: 'PDF Processing', description: 'Extracting content and metadata from PDFs', icon: 'fas fa-file-pdf' },
     splitting: { title: 'Document Splitting', description: 'Creating page batches for processing', icon: 'fas fa-cut' },
+    lmm_processing: { title: 'LMM Processing', description: 'Sending page batches to the multimodal model', icon: 'fas fa-robot' },
+    chunking: { title: 'Chunking', description: 'Review chunked output and continuation context', icon: 'fas fa-object-group' },
     completed: { title: 'Completed', description: 'Successfully processed documents', icon: 'fas fa-check-circle' },
     error: { title: 'Errors', description: 'Documents that encountered processing errors', icon: 'fas fa-exclamation-triangle' }
 };
@@ -344,6 +400,11 @@ function showUploadModal() {
 async function startProcessing() {
     const batchSize = parseInt(document.getElementById('batchSize').value);
     const overlapPages = parseInt(document.getElementById('overlapPages').value);
+    const prompt = document.getElementById('promptInput').value.trim();
+    const model = document.getElementById('modelSelect').value;
+    const temperatureValue = document.getElementById('temperatureInput').value;
+    const parsedTemperature = parseFloat(temperatureValue);
+    const temperature = Number.isNaN(parsedTemperature) ? null : parsedTemperature;
     const startBtn = document.getElementById('startProcessingBtn');
 
     startBtn.disabled = true;
@@ -351,7 +412,7 @@ async function startProcessing() {
 
     try {
         for (const file of selectedFiles) {
-            await submitFile(file, batchSize, overlapPages);
+            await submitFile(file, batchSize, overlapPages, prompt, model, temperature);
         }
 
         // Reset form
@@ -374,11 +435,20 @@ async function startProcessing() {
     }
 }
 
-async function submitFile(file, batchSize, overlapPages) {
+async function submitFile(file, batchSize, overlapPages, prompt, model, temperature) {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('batch_size', batchSize);
     formData.append('overlap_pages', overlapPages);
+    if (typeof prompt === 'string') {
+        formData.append('prompt', prompt);
+    }
+    if (model) {
+        formData.append('model', model);
+    }
+    if (temperature !== null && !Number.isNaN(temperature)) {
+        formData.append('temperature', temperature);
+    }
 
     const response = await fetch('/api/pipeline/submit', {
         method: 'POST',
@@ -428,7 +498,7 @@ function updateStatusCards() {
     const tasks = Object.values(allTasks);
 
     const queueCount = tasks.filter(t => t.status === 'upload').length;
-    const processingCount = tasks.filter(t => ['pdf_processing', 'splitting'].includes(t.status)).length;
+    const processingCount = tasks.filter(t => ['pdf_processing', 'splitting', 'lmm_processing', 'chunking'].includes(t.status)).length;
     const completedCount = tasks.filter(t => t.status === 'completed').length;
     const errorCount = tasks.filter(t => t.status === 'error').length;
 
@@ -446,6 +516,8 @@ function updateStageFlow() {
         upload: tasks.filter(t => t.status === 'upload').length,
         pdf_processing: tasks.filter(t => t.status === 'pdf_processing').length,
         splitting: tasks.filter(t => t.status === 'splitting').length,
+        lmm_processing: tasks.filter(t => t.status === 'lmm_processing').length,
+        chunking: tasks.filter(t => t.status === 'chunking').length,
         completed: tasks.filter(t => t.status === 'completed').length
     };
 
@@ -453,6 +525,8 @@ function updateStageFlow() {
     document.getElementById('uploadStageCount').textContent = stageCounts.upload;
     document.getElementById('processingStageCount').textContent = stageCounts.pdf_processing;
     document.getElementById('splittingStageCount').textContent = stageCounts.splitting;
+    document.getElementById('lmmStageCount').textContent = stageCounts.lmm_processing;
+    document.getElementById('chunkingStageCount').textContent = stageCounts.chunking;
     document.getElementById('completedStageCount').textContent = stageCounts.completed;
 
     // Update active state
@@ -593,8 +667,9 @@ function getCompletedStages(task) {
     const stages = [
         { id: 'summary', name: 'Summary', icon: 'fas fa-chart-bar', available: true },
         { id: 'pdf_processing', name: 'PDF Processing', icon: 'fas fa-file-pdf', available: task.status !== 'upload' },
-        { id: 'splitting', name: 'Splitting', icon: 'fas fa-cut', available: task.status === 'completed' || task.status === 'splitting' },
-        { id: 'batches', name: 'Batches', icon: 'fas fa-layer-group', available: task.batches && task.batches.length > 0 }
+        { id: 'splitting', name: 'Splitting', icon: 'fas fa-cut', available: ['splitting', 'lmm_processing', 'chunking', 'completed'].includes(task.status) },
+        { id: 'batches', name: 'Batches', icon: 'fas fa-layer-group', available: task.batches && task.batches.length > 0 },
+        { id: 'chunking', name: 'Chunk Output', icon: 'fas fa-object-group', available: task.batches && task.batches.some(batch => batch.lmm_output) }
     ];
 
     return stages.filter(stage => stage.available);
@@ -629,6 +704,8 @@ async function createStageContent(activeStage, task) {
             // Initialize the first batch after content is rendered
             setTimeout(() => initializeBatchesContent(task), 100);
             return batchesContent;
+        case 'chunking':
+            return createChunkingContent(task);
         default:
             return createSummaryContent(task);
     }
@@ -689,6 +766,32 @@ function createSummaryContent(task) {
                             <div class="info-item">
                                 <label>Source</label>
                                 <span>${escapeHtml(task.document_info?.source_type || 'upload')}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
+
+            ${(task.prompt || task.model) ? `
+                <div class="mt-4">
+                    <h6>LMM Settings</h6>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <div class="info-item">
+                                <label>Model</label>
+                                <span>${escapeHtml(task.model || 'google/gemini-2.5-pro-exp')}</span>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="info-item">
+                                <label>Temperature</label>
+                                <span>${typeof task.temperature === 'number' ? task.temperature.toFixed(2) : '0.10'}</span>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="info-item">
+                                <label>Prompt</label>
+                                <div class="prompt-preview">${task.prompt ? escapeHtml(task.prompt) : 'Default prompt applied'}</div>
                             </div>
                         </div>
                     </div>
@@ -913,6 +1016,76 @@ function createBatchesContent(task) {
     `;
 }
 
+function createChunkingContent(task) {
+    if (!task.batches || task.batches.length === 0) {
+        return `
+            <div class="text-center text-muted py-4">
+                <i class="fas fa-object-group fa-2x mb-3"></i>
+                <p>No batches available yet</p>
+            </div>
+        `;
+    }
+
+    const hasOutput = task.batches.some(batch => batch.lmm_output);
+    if (!hasOutput) {
+        return `
+            <div class="text-center text-muted py-4">
+                <i class="fas fa-robot fa-2x mb-3"></i>
+                <p>LMM processing results will appear here once available.</p>
+            </div>
+        `;
+    }
+
+    const accordionId = `chunkAccordion-${task.task_id}`;
+
+    const accordionItems = task.batches.map((batch, index) => {
+        const chunkSummary = Array.isArray(batch.chunk_summary) && batch.chunk_summary.length > 0
+            ? `<div class="chunk-summary"><strong>Chunk Highlights</strong><ul>${batch.chunk_summary.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div>`
+            : '';
+
+        const contextDetails = renderContextSnapshot(batch.context_snapshot);
+
+        const lmmOutput = batch.lmm_output
+            ? `<pre class="chunk-output">${escapeHtml(batch.lmm_output)}</pre>`
+            : '<p class="text-muted mb-0">Output not available for this batch.</p>';
+
+        return `
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="chunkHeading-${batch.batch_id}">
+                    <button class="accordion-button ${index === 0 ? '' : 'collapsed'}" type="button"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#chunkCollapse-${batch.batch_id}" aria-expanded="${index === 0}"
+                            aria-controls="chunkCollapse-${batch.batch_id}">
+                        <div class="w-100 d-flex justify-content-between align-items-center">
+                            <span>Batch ${batch.batch_number} • Pages ${batch.start_page}-${batch.end_page}</span>
+                            <span class="badge bg-${getStatusClass(batch.status)}">${formatStatus(batch.status || 'completed')}</span>
+                        </div>
+                    </button>
+                </h2>
+                <div id="chunkCollapse-${batch.batch_id}" class="accordion-collapse collapse ${index === 0 ? 'show' : ''}" data-bs-parent="#${accordionId}">
+                    <div class="accordion-body">
+                        ${lmmOutput}
+                        ${chunkSummary}
+                        ${contextDetails}
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    return `
+        <div class="chunking-output">
+            <div class="mb-3">
+                <h6><i class="fas fa-object-group me-2"></i>Chunked Output</h6>
+                <p class="text-muted mb-0">Review the multimodal model output for each batch, including context passed to the next batch.</p>
+            </div>
+            <div class="accordion" id="${accordionId}">
+                ${accordionItems}
+            </div>
+        </div>
+    `;
+}
+
 function createPageTimeline(task) {
     if (!task.batches || task.batches.length === 0) return '';
 
@@ -1057,9 +1230,69 @@ function getFileName(task) {
 }
 
 function formatStatus(status) {
-    return status.split('_').map(word =>
+    if (!status) {
+        return 'Unknown';
+    }
+    return status.toString().split('_').map(word =>
         word.charAt(0).toUpperCase() + word.slice(1)
     ).join(' ');
+}
+
+function renderContextSnapshot(snapshot) {
+    if (!snapshot || typeof snapshot !== 'object') {
+        return '';
+    }
+
+    const previous = snapshot.previous_context || {};
+    const lastChunks = snapshot.last_chunks && snapshot.last_chunks.length > 0
+        ? snapshot.last_chunks
+        : previous.last_chunks || [];
+    const headingHierarchy = Object.keys(snapshot.heading_hierarchy || {}).length > 0
+        ? snapshot.heading_hierarchy
+        : previous.heading_hierarchy || {};
+    const continuation = Object.keys(snapshot.continuation_metadata || {}).length > 0
+        ? snapshot.continuation_metadata
+        : previous.continuation_metadata || {};
+
+    const sections = [];
+
+    if (lastChunks.length > 0) {
+        sections.push(`
+            <div class="context-section">
+                <strong>Recent Chunks</strong>
+                <ul>${lastChunks.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
+            </div>
+        `);
+    }
+
+    if (Object.keys(headingHierarchy).length > 0) {
+        sections.push(`
+            <div class="context-section">
+                <strong>Heading Hierarchy</strong>
+                <ul>${Object.entries(headingHierarchy).map(([level, value]) => `<li>${escapeHtml(level)}: ${escapeHtml(value)}</li>`).join('')}</ul>
+            </div>
+        `);
+    }
+
+    if (Object.keys(continuation).length > 0) {
+        sections.push(`
+            <div class="context-section">
+                <strong>Continuation Metadata</strong>
+                <ul>${Object.entries(continuation).map(([key, value]) => `<li>${escapeHtml(key)}: ${escapeHtml(String(value))}</li>`).join('')}</ul>
+            </div>
+        `);
+    }
+
+    if (sections.length === 0) {
+        return '';
+    }
+
+    return `
+        <div class="context-snapshot mt-3">
+            <h6 class="text-muted">Context passed to next batch</h6>
+            ${sections.join('')}
+        </div>
+    `;
 }
 
 function getStatusClass(status) {
@@ -1067,6 +1300,8 @@ function getStatusClass(status) {
         upload: 'info',
         pdf_processing: 'warning',
         splitting: 'primary',
+        lmm_processing: 'secondary',
+        chunking: 'dark',
         completed: 'success',
         error: 'danger',
         pending: 'secondary'
@@ -1173,6 +1408,11 @@ function createFullscreenHTML(task) {
                                 <i class="fas fa-layer-group me-2"></i>Batches
                             </button>
                         </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-tab="chunking" onclick="switchFullscreenTab('${task.task_id}', 'chunking')">
+                                <i class="fas fa-object-group me-2"></i>Chunking
+                            </button>
+                        </li>
                     </ul>
                 </div>
                 
@@ -1242,6 +1482,9 @@ async function loadFullscreenTabContent(taskId, tabName) {
                 break;
             case 'batches':
                 content = createFullscreenBatchesContent(task, taskId);
+                break;
+            case 'chunking':
+                content = createFullscreenChunkingContent(task);
                 break;
         }
 
@@ -1514,6 +1757,14 @@ function createFullscreenBatchesContent(task, taskId) {
                     </div>
                 </div>
             `).join('')}
+        </div>
+    `;
+}
+
+function createFullscreenChunkingContent(task) {
+    return `
+        <div class="fullscreen-chunking p-3">
+            ${createChunkingContent(task)}
         </div>
     `;
 }

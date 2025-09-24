@@ -50,85 +50,48 @@
         </div>
 
         <div class="row g-4">
-            <div class="col-lg-6">
-                <div class="card h-100">
-                    <div class="card-header bg-primary text-white">
-                        <h5 class="mb-0">
-                            <i class="fas fa-file-alt me-2"></i>
-                            Document Information
-                        </h5>
-                    </div>
+            <div class="col-lg-6 col-xl-5">
+                <div class="card h-100 border-0 shadow-sm">
                     <div class="card-body">
-                        <table class="table table-sm">
-                            <tr>
-                                <td><strong>File Path:</strong></td>
-                                <td><code>{{ document_info.file_path }}</code></td>
-                            </tr>
-                            <tr>
-                                <td><strong>Source:</strong></td>
-                                <td>
-                                    <span class="badge {% if document_info.source_type == 'local' %}bg-primary{% else %}bg-warning text-dark{% endif %}">
-                                        {{ document_info.source_type|upper }}
-                                    </span>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td><strong>Total Pages:</strong></td>
-                                <td>{{ document_info.total_pages }}</td>
-                            </tr>
-                            <tr>
-                                <td><strong>File Size:</strong></td>
-                                <td>{{ document_info.file_size_mb or 'Unknown' }} MB</td>
-                            </tr>
+                        <h5 class="mb-3">
+                            <i class="fas fa-file-alt me-2 text-primary"></i>
+                            Document summary
+                        </h5>
+                        <table class="table table-sm mb-0">
+                            <tbody>
+                                <tr>
+                                    <td class="fw-semibold text-muted">File</td>
+                                    <td class="text-break"><code>{{ document_info.file_path }}</code></td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-semibold text-muted">Source</td>
+                                    <td>{{ document_info.source_type|title }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-semibold text-muted">Pages</td>
+                                    <td>{{ document_info.total_pages }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-semibold text-muted">Size</td>
+                                    <td>{{ document_info.file_size_mb or 'Unknown' }} MB</td>
+                                </tr>
+                            </tbody>
                         </table>
 
                         {% if document_info.metadata %}
-                        <h6 class="mt-4">Metadata</h6>
-                        <table class="table table-sm table-striped">
-                            {% for key, value in document_info.metadata.items() %}
-                            <tr>
-                                <td><strong>{{ key|title }}:</strong></td>
-                                <td>{{ value if value else 'N/A' }}</td>
-                            </tr>
-                            {% endfor %}
+                        <hr>
+                        <h6 class="text-muted text-uppercase fs-6">Metadata</h6>
+                        <table class="table table-sm mb-0">
+                            <tbody>
+                                {% for key, value in document_info.metadata.items() %}
+                                <tr>
+                                    <td class="fw-semibold text-muted">{{ key|title }}</td>
+                                    <td>{{ value if value else 'N/A' }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
                         </table>
                         {% endif %}
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-lg-6">
-                <div class="card h-100">
-                    <div class="card-header bg-success text-white">
-                        <h5 class="mb-0">
-                            <i class="fas fa-chart-bar me-2"></i>
-                            Quick Stats
-                        </h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="row text-center">
-                            <div class="col-4">
-                                <div class="stat-item">
-                                    <i class="fas fa-file-alt fa-2x text-primary mb-2"></i>
-                                    <h4>{{ document_info.total_pages }}</h4>
-                                    <small class="text-muted">Pages</small>
-                                </div>
-                            </div>
-                            <div class="col-4">
-                                <div class="stat-item">
-                                    <i class="fas fa-weight-hanging fa-2x text-success mb-2"></i>
-                                    <h4>{{ document_info.file_size_mb or 'N/A' }}</h4>
-                                    <small class="text-muted">MB</small>
-                                </div>
-                            </div>
-                            <div class="col-4">
-                                <div class="stat-item">
-                                    <i class="fas fa-images fa-2x text-warning mb-2"></i>
-                                    <h4>{{ page_images|length }}</h4>
-                                    <small class="text-muted">Images</small>
-                                </div>
-                            </div>
-                        </div>
                     </div>
                 </div>
             </div>

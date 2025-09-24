@@ -163,3 +163,130 @@ body {
         max-height: 60vh;
     }
 }
+
+/* Human-in-the-loop workflow */
+.manual-stepper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+}
+
+.manual-stepper .step-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    color: #6c757d;
+    transition: all 0.3s ease;
+}
+
+.manual-stepper .step-item.active {
+    color: #0d6efd;
+}
+
+.manual-stepper .step-number {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #e9ecef;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.manual-stepper .step-item.active .step-number {
+    background-color: #0d6efd;
+    color: #fff;
+    box-shadow: 0 4px 10px rgba(13, 110, 253, 0.3);
+}
+
+.manual-stepper .step-connector {
+    flex: 1;
+    height: 3px;
+    background: linear-gradient(90deg, #e9ecef, #e9ecef);
+}
+
+.manual-stepper .step-item.active + .step-connector {
+    background: linear-gradient(90deg, #0d6efd, #e9ecef);
+}
+
+.manual-page-card {
+    position: relative;
+    border: 2px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.manual-page-card.selected {
+    border-color: #0d6efd;
+    box-shadow: 0 8px 20px rgba(13, 110, 253, 0.2);
+}
+
+.manual-page-card .page-select-control {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: rgba(255, 255, 255, 0.9);
+    padding: 0.25rem 0.5rem;
+    border-radius: 999px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+    z-index: 2;
+}
+
+.manual-page-card .page-image {
+    cursor: zoom-in;
+}
+
+.selected-pages-view {
+    min-height: 60px;
+    background-color: #f8f9fa;
+    border: 1px dashed #ced4da;
+    border-radius: 8px;
+    padding: 0.75rem;
+    font-size: 0.95rem;
+}
+
+.batch-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+.batch-list .batch-item {
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 0.75rem;
+    background-color: #fdfdfd;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.batch-list .batch-item .badge {
+    margin-right: 0.25rem;
+}
+
+.batch-list .batch-item .btn-link {
+    color: #dc3545;
+    text-decoration: none;
+    font-size: 0.85rem;
+}
+
+.batch-summary-table td,
+.batch-summary-table th {
+    vertical-align: middle;
+}
+
+@media (max-width: 768px) {
+    .manual-stepper {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .manual-stepper .step-connector {
+        width: 3px;
+        height: 40px;
+    }
+}

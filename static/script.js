@@ -3,6 +3,8 @@
 document.addEventListener('DOMContentLoaded', function() {
     const uploadForm = document.getElementById('uploadForm');
     const submitBtn = document.getElementById('submitBtn');
+    const humanLoopBtn = document.getElementById('humanLoopSubmit');
+    const processModeInput = document.getElementById('processModeInput');
     const loadingIndicator = document.getElementById('loadingIndicator');
 
     // Tab switching logic to clear other inputs
@@ -46,10 +48,29 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
-            // Show loading indicator
-            submitBtn.disabled = true;
-            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Processing...';
-            loadingIndicator.style.display = 'block';
+            const submitter = e.submitter;
+            const isHumanLoop = submitter && submitter.id === 'humanLoopSubmit';
+
+            if (processModeInput) {
+                processModeInput.value = isHumanLoop ? 'human' : 'auto';
+            }
+
+            // Update button states
+            const targetButton = isHumanLoop ? humanLoopBtn : submitBtn;
+            const secondaryButton = isHumanLoop ? submitBtn : humanLoopBtn;
+
+            if (targetButton) {
+                targetButton.disabled = true;
+                targetButton.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Processing...';
+            }
+
+            if (secondaryButton) {
+                secondaryButton.disabled = true;
+            }
+
+            if (loadingIndicator) {
+                loadingIndicator.style.display = 'block';
+            }
         });
     }
 
@@ -134,16 +155,21 @@ let currentPageData = [];
 let currentPageIndex = 0;
 
 function openImageModal(pageNumber, imageData) {
+    const modalElement = document.getElementById('imageModal');
+    if (!modalElement) {
+        return;
+    }
+
     // Store page data if not already stored
     if (currentPageData.length === 0) {
         // Collect all page images from the DOM
         const pageImages = document.querySelectorAll('[onclick*="openImageModal"]');
-        pageImages.forEach((img, index) => {
+        pageImages.forEach((img) => {
             const onclickAttr = img.getAttribute('onclick');
-            const matches = onclickAttr.match(/openImageModal\((\d+), '([^']+)'\)/);
+            const matches = onclickAttr && onclickAttr.match(/openImageModal\((\d+), '([^']+)'\)/);
             if (matches) {
                 currentPageData.push({
-                    pageNumber: parseInt(matches[1]),
+                    pageNumber: parseInt(matches[1], 10),
                     imageData: matches[2]
                 });
             }
@@ -160,7 +186,7 @@ function openImageModal(pageNumber, imageData) {
     showModalPage(currentPageIndex);
 
     // Show the modal
-    const modal = new bootstrap.Modal(document.getElementById('imageModal'));
+    const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
     modal.show();
 }
 
@@ -173,6 +199,10 @@ function showModalPage(index) {
     const pageCounter = document.getElementById('pageCounter');
     const prevBtn = document.getElementById('prevPageBtn');
     const nextBtn = document.getElementById('nextPageBtn');
+
+    if (!modalImage || !modalTitle || !pageCounter || !prevBtn || !nextBtn) {
+        return;
+    }
 
     // Update modal content
     modalImage.src = `data:image/png;base64,${pageData.imageData}`;
@@ -196,19 +226,27 @@ function navigatePage(direction) {
 // Keyboard navigation for modal
 document.addEventListener('keydown', function(e) {
     const modal = document.getElementById('imageModal');
-    if (modal.classList.contains('show')) {
-        if (e.key === 'ArrowLeft') {
-            navigatePage(-1);
-        } else if (e.key === 'ArrowRight') {
-            navigatePage(1);
-        } else if (e.key === 'Escape') {
-            bootstrap.Modal.getInstance(modal).hide();
+    if (!modal || !modal.classList.contains('show')) {
+        return;
+    }
+
+    if (e.key === 'ArrowLeft') {
+        navigatePage(-1);
+    } else if (e.key === 'ArrowRight') {
+        navigatePage(1);
+    } else if (e.key === 'Escape') {
+        const instance = bootstrap.Modal.getInstance(modal);
+        if (instance) {
+            instance.hide();
         }
     }
 });
 
 // Reset page data when modal is closed
-document.getElementById('imageModal').addEventListener('hidden.bs.modal', function () {
-    currentPageData = [];
-    currentPageIndex = 0;
-});
+const imageModalElement = document.getElementById('imageModal');
+if (imageModalElement) {
+    imageModalElement.addEventListener('hidden.bs.modal', function () {
+        currentPageData = [];
+        currentPageIndex = 0;
+    });
+}

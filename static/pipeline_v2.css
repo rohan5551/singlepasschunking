@@ -1,0 +1,1744 @@
+/* Pipeline V2 - Clean and Intuitive Design */
+
+/* Status Overview Cards */
+.status-overview-card {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    border: 1px solid rgba(0,0,0,0.05);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    transition: all 0.3s ease;
+    cursor: default;
+}
+
+.status-overview-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+}
+
+.status-overview-card .status-icon {
+    width: 3rem;
+    height: 3rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    color: white;
+}
+
+.status-overview-card.queue .status-icon { background: #17a2b8; }
+.status-overview-card.processing .status-icon { background: #ffc107; }
+.status-overview-card.completed .status-icon { background: #28a745; }
+.status-overview-card.error .status-icon { background: #dc3545; }
+
+.status-overview-card .status-content {
+    flex: 1;
+}
+
+.status-overview-card .status-count {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #2c3e50;
+    line-height: 1;
+}
+
+.status-overview-card .status-label {
+    font-size: 0.875rem;
+    color: #6c757d;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 0.25rem;
+}
+
+/* Pipeline Flow */
+.pipeline-flow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 2rem;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-radius: 12px;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.stage-container {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    min-width: 140px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.stage-container:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    border-color: #007bff;
+}
+
+.stage-container.selected {
+    border-color: #007bff;
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+    color: white;
+}
+
+.stage-container.selected .stage-count {
+    background: rgba(255,255,255,0.2);
+    color: white;
+}
+
+.stage-container .stage-icon {
+    font-size: 1.5rem;
+    color: #007bff;
+    margin-bottom: 0.75rem;
+}
+
+.stage-container.selected .stage-icon {
+    color: white;
+}
+
+.stage-container .stage-title {
+    font-weight: 600;
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+}
+
+.stage-container .stage-count {
+    display: inline-block;
+    background: #e9ecef;
+    color: #495057;
+    padding: 0.25rem 0.75rem;
+    border-radius: 15px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    min-width: 2rem;
+}
+
+.stage-container.has-tasks .stage-count {
+    background: #007bff;
+    color: white;
+}
+
+.pipeline-arrow {
+    color: #6c757d;
+    font-size: 1.25rem;
+    margin: 0 0.5rem;
+}
+
+/* Document List */
+.document-list {
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.task-card {
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 0.75rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.task-card:hover {
+    border-color: #007bff;
+    box-shadow: 0 2px 8px rgba(0,123,255,0.1);
+    transform: translateY(-1px);
+}
+
+.task-card.selected {
+    border-color: #007bff;
+    background: #f8f9ff;
+    box-shadow: 0 2px 12px rgba(0,123,255,0.2);
+}
+
+.task-card .task-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.task-card .task-title {
+    font-weight: 600;
+    color: #2c3e50;
+    display: flex;
+    align-items: center;
+}
+
+.task-card .task-stats {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Task Output */
+.task-summary, .config-info, .batch-info {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+}
+
+.task-summary h6, .config-info h6, .batch-info h6 {
+    color: #2c3e50;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    border-bottom: 2px solid #dee2e6;
+    padding-bottom: 0.5rem;
+}
+
+.info-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.info-item label {
+    font-size: 0.8rem;
+    color: #6c757d;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+}
+
+.info-item span {
+    font-weight: 500;
+    color: #2c3e50;
+}
+
+/* Batch Grid */
+.batch-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.batch-item {
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.batch-item .batch-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+}
+
+.batch-item .batch-details {
+    color: #6c757d;
+    font-size: 0.875rem;
+}
+
+/* Upload Modal */
+.upload-drop-zone {
+    border: 3px dashed #dee2e6;
+    border-radius: 12px;
+    background: #f8f9fa;
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+.upload-drop-zone:hover {
+    border-color: #007bff;
+    background: #f0f8ff;
+}
+
+.upload-drop-zone.dragover {
+    border-color: #007bff;
+    background: #e3f2fd;
+    transform: scale(1.02);
+}
+
+/* File List */
+.selected-files-list {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.file-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+}
+
+.file-item .file-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.file-item .file-name {
+    font-weight: 500;
+}
+
+.file-item .file-size {
+    margin-left: 0.5rem;
+}
+
+/* Progress bars */
+.progress {
+    background-color: #e9ecef;
+    border-radius: 3px;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .pipeline-flow {
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .pipeline-arrow {
+        transform: rotate(90deg);
+    }
+
+    .stage-container {
+        width: 100%;
+        max-width: 200px;
+    }
+
+    .status-overview-card {
+        padding: 1rem;
+    }
+
+    .status-overview-card .status-count {
+        font-size: 1.5rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .batch-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .task-card .task-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.task-card, .stage-container, .status-overview-card {
+    animation: fadeIn 0.3s ease;
+}
+
+/* Custom scrollbars */
+.document-list::-webkit-scrollbar,
+.selected-files-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.document-list::-webkit-scrollbar-track,
+.selected-files-list::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+}
+
+.document-list::-webkit-scrollbar-thumb,
+.selected-files-list::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
+}
+
+.document-list::-webkit-scrollbar-thumb:hover,
+.selected-files-list::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+
+/* Loading states */
+.loading-spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 2px solid #f3f3f3;
+    border-top: 2px solid #007bff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Stage Tabs in Task Output */
+.stage-tabs-container {
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.stage-tabs {
+    border-bottom: none;
+    gap: 0.5rem;
+}
+
+.stage-tabs .nav-link {
+    border: none;
+    border-radius: 8px 8px 0 0;
+    background: #f8f9fa;
+    color: #6c757d;
+    padding: 0.75rem 1rem;
+    transition: all 0.2s ease;
+    border-bottom: 3px solid transparent;
+}
+
+.stage-tabs .nav-link:hover {
+    background: #e9ecef;
+    color: #495057;
+}
+
+.stage-tabs .nav-link.active {
+    background: white;
+    color: #007bff;
+    border-bottom-color: #007bff;
+    font-weight: 600;
+}
+
+/* Stage Content */
+.stage-content-container {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 0 0 8px 8px;
+}
+
+/* PDF Processing Output */
+.pdf-processing-output .output-section {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 1.25rem;
+    height: 100%;
+}
+
+.metadata-list {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.metadata-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.metadata-item:last-child {
+    border-bottom: none;
+}
+
+.metadata-label {
+    font-weight: 500;
+    color: #6c757d;
+    min-width: 100px;
+}
+
+.metadata-value {
+    color: #2c3e50;
+    text-align: right;
+    word-break: break-word;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 1rem;
+}
+
+.stat-item {
+    text-align: center;
+    padding: 1rem;
+    background: white;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+}
+
+.stat-value {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #007bff;
+    margin-bottom: 0.25rem;
+}
+
+.stat-label {
+    font-size: 0.875rem;
+    color: #6c757d;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Splitting Output */
+.splitting-summary {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 1.5rem;
+}
+
+.summary-stat {
+    text-align: center;
+    padding: 1rem;
+    background: white;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+}
+
+.stat-number {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #28a745;
+    line-height: 1;
+}
+
+.stat-text {
+    font-size: 0.875rem;
+    color: #6c757d;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 0.5rem;
+}
+
+/* Page Timeline */
+.batch-visualization {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-top: 1rem;
+}
+
+.timeline-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    margin-bottom: 1rem;
+    padding: 1rem;
+    background: white;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+}
+
+.timeline-page {
+    width: 30px;
+    height: 30px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 600;
+    color: #333;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.timeline-page:hover {
+    transform: scale(1.1);
+    z-index: 10;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.timeline-page.overlap {
+    border: 2px solid #ff6b6b;
+    box-shadow: 0 0 0 1px #ff6b6b;
+}
+
+.timeline-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    justify-content: center;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+}
+
+.legend-color {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+}
+
+.legend-color.overlap-pattern {
+    background: repeating-linear-gradient(
+        45deg,
+        #ff6b6b,
+        #ff6b6b 2px,
+        transparent 2px,
+        transparent 4px
+    );
+}
+
+/* Batch Cards Grid */
+.batch-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1rem;
+}
+
+.batch-detail-card {
+    background: white;
+    border: 1px solid #e9ecef;
+    border-radius: 12px;
+    padding: 1.25rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    transition: all 0.2s ease;
+}
+
+.batch-detail-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+}
+
+.batch-detail-card.batch-clickable {
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.batch-detail-card.batch-clickable:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 25px rgba(0,123,255,0.2);
+    border-color: #007bff;
+}
+
+.batch-detail-card.batch-clickable:hover .batch-card-header {
+    background: linear-gradient(135deg, #007bff, #0056b3);
+}
+
+.batch-detail-card.batch-clickable:active {
+    transform: translateY(-2px);
+}
+
+.batch-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.batch-title {
+    font-weight: 600;
+    color: #2c3e50;
+    display: flex;
+    align-items: center;
+}
+
+.batch-info-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.batch-info-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.batch-info-item label {
+    font-size: 0.8rem;
+    color: #6c757d;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+}
+
+.batch-info-item span {
+    font-weight: 500;
+    color: #2c3e50;
+}
+
+/* Pages Indicator */
+.pages-indicator {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 0.75rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+}
+
+.page-indicator {
+    width: 28px;
+    height: 28px;
+    background: #007bff;
+    color: white;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.page-indicator:hover {
+    background: #0056b3;
+    transform: scale(1.1);
+}
+
+/* Processing Status */
+.processing-status {
+    background: #d4edda;
+    border: 1px solid #c3e6cb;
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+/* Responsive adjustments for new components */
+@media (max-width: 768px) {
+    .timeline-container {
+        justify-content: center;
+    }
+
+    .timeline-page {
+        width: 25px;
+        height: 25px;
+        font-size: 9px;
+    }
+
+    .batch-cards-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .batch-info-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .stage-tabs .nav-link {
+        font-size: 0.875rem;
+        padding: 0.5rem 0.75rem;
+    }
+}
+
+/* Full-Screen Document View */
+.document-fullscreen-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.document-fullscreen-overlay.show {
+    opacity: 1;
+}
+
+.document-fullscreen-header {
+    background: #2c3e50;
+    color: white;
+    padding: 1rem 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.document-fullscreen-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.document-fullscreen-controls {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+.document-fullscreen-close {
+    background: transparent;
+    border: none;
+    color: white;
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0.5rem;
+    border-radius: 4px;
+    transition: background 0.2s ease;
+}
+
+.document-fullscreen-close:hover {
+    background: rgba(255,255,255,0.1);
+}
+
+.document-fullscreen-content {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    background: #34495e;
+}
+
+.document-fullscreen-sidebar {
+    width: 350px;
+    background: #2c3e50;
+    border-right: 1px solid rgba(255,255,255,0.1);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.document-fullscreen-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Full-Screen Tabs */
+.fullscreen-tabs {
+    background: #2c3e50;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    padding: 0 1rem;
+    overflow-x: auto;
+}
+
+.fullscreen-tabs .nav {
+    border-bottom: none;
+    gap: 0.5rem;
+    min-height: 50px;
+    align-items: center;
+}
+
+.fullscreen-tabs .nav-link {
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: rgba(255,255,255,0.7);
+    padding: 0.75rem 1rem;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    border-bottom: 3px solid transparent;
+}
+
+.fullscreen-tabs .nav-link:hover {
+    background: rgba(255,255,255,0.1);
+    color: white;
+}
+
+.fullscreen-tabs .nav-link.active {
+    background: rgba(255,255,255,0.15);
+    color: white;
+    border-bottom-color: #3498db;
+    font-weight: 600;
+}
+
+/* Full-Screen Tab Content */
+.fullscreen-tab-content {
+    flex: 1;
+    padding: 2rem;
+    overflow-y: auto;
+    background: #ecf0f1;
+}
+
+.fullscreen-tab-pane {
+    display: none;
+    height: 100%;
+}
+
+.fullscreen-tab-pane.active {
+    display: block;
+}
+
+/* PDF Images Grid */
+.pdf-images-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.5rem;
+    padding: 1rem;
+}
+
+.pdf-page-card {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    overflow: hidden;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.pdf-page-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+}
+
+.pdf-page-image {
+    width: 100%;
+    height: auto;
+    display: block;
+    cursor: pointer;
+}
+
+.pdf-page-info {
+    padding: 1rem;
+    text-align: center;
+    background: #f8f9fa;
+    border-top: 1px solid #e9ecef;
+}
+
+.pdf-page-number {
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 0.25rem;
+}
+
+.pdf-page-size {
+    font-size: 0.875rem;
+    color: #6c757d;
+}
+
+/* Batch Cards in Full-Screen - More Concise Design */
+.fullscreen-batch-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+    padding: 1rem;
+}
+
+.fullscreen-batch-card {
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.1);
+    overflow: hidden;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    border: 1px solid #e9ecef;
+}
+
+.fullscreen-batch-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 16px rgba(0,123,255,0.15);
+    border-color: #007bff;
+}
+
+.fullscreen-batch-card-header {
+    background: linear-gradient(135deg, #007bff, #0056b3);
+    color: white;
+    padding: 0.875rem 1rem;
+    text-align: center;
+    position: relative;
+}
+
+.fullscreen-batch-card-title {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+
+.fullscreen-batch-card-subtitle {
+    opacity: 0.9;
+    font-size: 0.8rem;
+    font-weight: 400;
+}
+
+.fullscreen-batch-card-body {
+    padding: 1rem;
+}
+
+.fullscreen-batch-info {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+.fullscreen-batch-info-item {
+    text-align: center;
+    padding: 0.5rem;
+    background: #f8f9fa;
+    border-radius: 6px;
+    flex: 1;
+    min-width: 0;
+}
+
+.fullscreen-batch-info-label {
+    font-size: 0.7rem;
+    color: #6c757d;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: 0.125rem;
+    line-height: 1;
+}
+
+.fullscreen-batch-info-value {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #2c3e50;
+    line-height: 1.2;
+}
+
+.fullscreen-batch-pages-preview {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    justify-content: center;
+    padding: 0.75rem;
+    background: #f8f9fa;
+    border-radius: 6px;
+    max-height: 60px;
+    overflow: hidden;
+    position: relative;
+}
+
+.fullscreen-batch-pages-preview::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 10px;
+    background: linear-gradient(transparent, #f8f9fa);
+    pointer-events: none;
+}
+
+.fullscreen-batch-page-indicator {
+    width: 24px;
+    height: 24px;
+    background: #007bff;
+    color: white;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.fullscreen-batch-page-indicator:hover {
+    background: #0056b3;
+    transform: scale(1.05);
+}
+
+/* Batch Modal */
+.batch-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    z-index: 10000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.batch-modal-overlay.show {
+    opacity: 1;
+}
+
+.batch-modal {
+    background: white;
+    border-radius: 12px;
+    width: 95%;
+    max-width: 1400px;
+    height: 85%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+
+.batch-modal-header {
+    background: linear-gradient(135deg, #3498db, #2980b9);
+    color: white;
+    padding: 1.25rem 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.batch-modal-title {
+    font-size: 1.4rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.batch-header-subtitle {
+    font-size: 0.9rem;
+    font-weight: 400;
+    opacity: 0.9;
+    margin-top: 0.25rem;
+}
+
+.batch-modal-close {
+    background: transparent;
+    border: none;
+    color: white;
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0.5rem;
+    border-radius: 4px;
+    transition: background 0.2s ease;
+}
+
+.batch-modal-close:hover {
+    background: rgba(255,255,255,0.2);
+}
+
+.batch-modal-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: #f8f9fa;
+    overflow: hidden;
+}
+
+/* Batch Info Strip */
+.batch-info-strip {
+    background: white;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid #e9ecef;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.batch-navigation-controls {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.nav-btn {
+    background: #007bff;
+    border: none;
+    color: white;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.nav-btn:hover:not(:disabled) {
+    background: #0056b3;
+    transform: scale(1.1);
+}
+
+.nav-btn:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.page-indicator {
+    font-weight: 600;
+    color: #495057;
+    min-width: 80px;
+    text-align: center;
+}
+
+.batch-view-options {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.view-btn {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    color: #495057;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 0.875rem;
+}
+
+.view-btn:hover {
+    background: #e9ecef;
+}
+
+.view-btn.active {
+    background: #007bff;
+    border-color: #007bff;
+    color: white;
+}
+
+/* Single Page View */
+.batch-single-view {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.page-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    overflow: auto;
+}
+
+.page-image-wrapper {
+    max-height: 70vh;
+    max-width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1rem;
+}
+
+.current-page-image {
+    max-width: 100%;
+    max-height: 100%;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    cursor: pointer;
+    transition: transform 0.2s ease;
+}
+
+.current-page-image:hover {
+    transform: scale(1.02);
+}
+
+.page-info {
+    text-align: center;
+}
+
+/* Thumbnail Slider */
+.thumbnail-slider-container {
+    background: white;
+    border-top: 1px solid #e9ecef;
+    padding: 1rem;
+}
+
+.thumbnail-slider {
+    display: flex;
+    gap: 0.75rem;
+    overflow-x: auto;
+    padding: 0.5rem 0;
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e0 #f7fafc;
+}
+
+.thumbnail-slider::-webkit-scrollbar {
+    height: 6px;
+}
+
+.thumbnail-slider::-webkit-scrollbar-track {
+    background: #f7fafc;
+    border-radius: 3px;
+}
+
+.thumbnail-slider::-webkit-scrollbar-thumb {
+    background: #cbd5e0;
+    border-radius: 3px;
+}
+
+.thumbnail-slider::-webkit-scrollbar-thumb:hover {
+    background: #a0aec0;
+}
+
+.thumbnail-item {
+    flex-shrink: 0;
+    width: 80px;
+    cursor: pointer;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 2px solid transparent;
+    transition: all 0.2s ease;
+    background: white;
+}
+
+.thumbnail-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.thumbnail-item.active {
+    border-color: #007bff;
+    box-shadow: 0 4px 16px rgba(0,123,255,0.25);
+}
+
+.thumbnail-image {
+    width: 100%;
+    height: 60px;
+    object-fit: cover;
+    display: block;
+}
+
+.thumbnail-label {
+    padding: 0.25rem;
+    text-align: center;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #495057;
+    background: #f8f9fa;
+}
+
+.thumbnail-item.active .thumbnail-label {
+    background: #007bff;
+    color: white;
+}
+
+/* Grid View */
+.batch-grid-view {
+    flex: 1;
+    padding: 1.5rem;
+    overflow-y: auto;
+}
+
+.batch-pages-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 1.5rem;
+}
+
+.batch-page-card {
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    transition: transform 0.2s ease;
+}
+
+.batch-page-card:hover {
+    transform: translateY(-2px);
+}
+
+.batch-page-image {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+.batch-page-info {
+    padding: 1rem;
+    text-align: center;
+    background: #f8f9fa;
+}
+
+.batch-page-number {
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.batch-page-note {
+    margin-top: 0.25rem;
+}
+
+.batch-page-card {
+    transition: all 0.2s ease;
+}
+
+.batch-page-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+}
+
+.batch-page-card:hover .batch-page-image {
+    transform: scale(1.02);
+}
+
+.batch-page-image {
+    transition: transform 0.2s ease;
+}
+
+/* Loading Spinner */
+.fullscreen-loading {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+    color: #6c757d;
+}
+
+.fullscreen-loading-spinner {
+    width: 48px;
+    height: 48px;
+    border: 4px solid #e9ecef;
+    border-top: 4px solid #3498db;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 1rem;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Responsive Full-Screen */
+@media (max-width: 768px) {
+    .document-fullscreen-content {
+        flex-direction: column;
+    }
+    
+    .document-fullscreen-sidebar {
+        width: 100%;
+        height: 200px;
+        border-right: none;
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    
+    .fullscreen-batch-grid {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+    }
+    
+    .pdf-images-grid {
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    }
+    
+    .batch-modal {
+        width: 98%;
+        height: 92%;
+    }
+    
+    .batch-modal-header {
+        padding: 1rem;
+    }
+    
+    .batch-modal-title {
+        font-size: 1.2rem;
+    }
+    
+    .batch-header-subtitle {
+        font-size: 0.8rem;
+    }
+    
+    .batch-info-strip {
+        flex-direction: column;
+        gap: 0.75rem;
+        padding: 0.875rem;
+    }
+    
+    .batch-navigation-controls {
+        order: 2;
+    }
+    
+    .batch-view-options {
+        order: 1;
+        justify-content: center;
+    }
+    
+    .page-container {
+        padding: 1rem;
+    }
+    
+    .page-image-wrapper {
+        max-height: 50vh;
+    }
+    
+    .thumbnail-slider-container {
+        padding: 0.75rem;
+    }
+    
+    .thumbnail-item {
+        width: 70px;
+    }
+    
+    .thumbnail-image {
+        height: 50px;
+    }
+    
+    .batch-pages-grid {
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 1rem;
+    }
+    
+    .fullscreen-batch-card-header {
+        padding: 0.75rem;
+    }
+    
+    .fullscreen-batch-card-body {
+        padding: 0.75rem;
+    }
+    
+    .fullscreen-batch-info {
+        gap: 0.5rem;
+    }
+    
+    .fullscreen-batch-info-item {
+        padding: 0.375rem;
+    }
+    
+    .fullscreen-batch-info-value {
+        font-size: 0.875rem;
+    }
+}
+
+/* Batch Tabs Design */
+.batch-tabs-container {
+    margin-bottom: 2rem;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.batch-tabs {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0 0.5rem 0.5rem 0.5rem;
+    overflow-x: auto;
+    scrollbar-width: thin;
+}
+
+.batch-tab {
+    background: white;
+    border: 2px solid #e9ecef;
+    border-radius: 12px 12px 0 0;
+    padding: 1rem;
+    min-width: 140px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    border-bottom: none;
+}
+
+.batch-tab:hover {
+    border-color: #3498db;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(52, 152, 219, 0.2);
+}
+
+.batch-tab.active {
+    background: linear-gradient(135deg, #3498db, #2980b9);
+    border-color: #3498db;
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(52, 152, 219, 0.3);
+}
+
+.batch-tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(135deg, #3498db, #2980b9);
+}
+
+.batch-tab-header {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-bottom: 0.5rem;
+}
+
+.batch-tab-title {
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.batch-tab-pages {
+    font-size: 0.75rem;
+    opacity: 0.8;
+}
+
+.batch-tab.active .batch-tab-pages {
+    opacity: 0.9;
+}
+
+.batch-tab-count {
+    background: #f8f9fa;
+    color: #495057;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 0.85rem;
+    border: 2px solid #e9ecef;
+}
+
+.batch-tab.active .batch-tab-count {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* Batch Content Area */
+.batch-content-container {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    min-height: 400px;
+    border: 1px solid #e9ecef;
+}
+
+.batch-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 200px;
+    color: #6c757d;
+}
+
+.batch-info-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.batch-info-bar-left h6 {
+    color: #2c3e50;
+    margin-bottom: 0.25rem;
+}
+
+.batch-pages-grid-inline {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1.5rem;
+}
+
+.batch-page-item-inline {
+    background: white;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+    border: 1px solid #e9ecef;
+}
+
+.batch-page-item-inline:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    border-color: #3498db;
+}
+
+.batch-page-image-container {
+    position: relative;
+    overflow: hidden;
+    background: #f8f9fa;
+}
+
+.batch-page-image-inline {
+    width: 100%;
+    height: auto;
+    display: block;
+    cursor: pointer;
+    transition: transform 0.3s ease;
+}
+
+.batch-page-image-container:hover .batch-page-image-inline {
+    transform: scale(1.05);
+}
+
+.batch-page-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(52, 152, 219, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    color: white;
+    font-size: 1.5rem;
+}
+
+.batch-page-image-container:hover .batch-page-overlay {
+    opacity: 1;
+}
+
+.batch-page-label {
+    padding: 1rem;
+    text-align: center;
+    background: #f8f9fa;
+    font-weight: 600;
+    color: #2c3e50;
+    border-top: 1px solid #e9ecef;
+}
+
+/* Responsive batch tabs */
+@media (max-width: 768px) {
+    .batch-tabs {
+        flex-wrap: wrap;
+    }
+    
+    .batch-tab {
+        min-width: 120px;
+        flex: 1;
+    }
+    
+    .batch-pages-grid-inline {
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 1rem;
+    }
+    
+    .batch-info-bar {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+}

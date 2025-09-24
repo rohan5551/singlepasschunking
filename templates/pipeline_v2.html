@@ -1,0 +1,1939 @@
+{% extends "base.html" %}
+
+{% block title %}PDF Processing Pipeline - Dashboard{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-lg-8">
+            <h2 class="mb-1">
+                <i class="fas fa-industry me-2 text-primary"></i>
+                PDF Processing Pipeline
+            </h2>
+            <p class="text-muted mb-0">Upload multiple PDFs and track their progress through each stage</p>
+        </div>
+        <div class="col-lg-4 text-lg-end">
+            <button class="btn btn-outline-secondary me-2" onclick="clearCompleted()">
+                <i class="fas fa-broom me-1"></i>Clear Completed
+            </button>
+            <button class="btn btn-primary" onclick="showUploadModal()">
+                <i class="fas fa-plus me-1"></i>Add Documents
+            </button>
+        </div>
+    </div>
+
+    <!-- Status Overview Cards -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="status-overview-card queue">
+                <div class="status-icon">
+                    <i class="fas fa-clock"></i>
+                </div>
+                <div class="status-content">
+                    <div class="status-count" id="queueCount">0</div>
+                    <div class="status-label">In Queue</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="status-overview-card processing">
+                <div class="status-icon">
+                    <i class="fas fa-cogs"></i>
+                </div>
+                <div class="status-content">
+                    <div class="status-count" id="processingCount">0</div>
+                    <div class="status-label">Processing</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="status-overview-card completed">
+                <div class="status-icon">
+                    <i class="fas fa-check-circle"></i>
+                </div>
+                <div class="status-content">
+                    <div class="status-count" id="completedCount">0</div>
+                    <div class="status-label">Completed</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="status-overview-card error">
+                <div class="status-icon">
+                    <i class="fas fa-exclamation-triangle"></i>
+                </div>
+                <div class="status-content">
+                    <div class="status-count" id="errorCount">0</div>
+                    <div class="status-label">Errors</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pipeline Flow -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-stream me-2"></i>Processing Flow
+                    </h5>
+                    <small class="text-muted">Click on any stage to see documents in that phase</small>
+                </div>
+                <div class="card-body">
+                    <div class="pipeline-flow">
+                        <div class="stage-container" data-stage="upload" onclick="selectStage('upload')">
+                            <div class="stage-icon">
+                                <i class="fas fa-upload"></i>
+                            </div>
+                            <div class="stage-info">
+                                <div class="stage-title">Upload</div>
+                                <div class="stage-count" id="uploadStageCount">0</div>
+                            </div>
+                        </div>
+
+                        <div class="pipeline-arrow">
+                            <i class="fas fa-chevron-right"></i>
+                        </div>
+
+                        <div class="stage-container" data-stage="pdf_processing" onclick="selectStage('pdf_processing')">
+                            <div class="stage-icon">
+                                <i class="fas fa-file-pdf"></i>
+                            </div>
+                            <div class="stage-info">
+                                <div class="stage-title">PDF Processing</div>
+                                <div class="stage-count" id="processingStageCount">0</div>
+                            </div>
+                        </div>
+
+                        <div class="pipeline-arrow">
+                            <i class="fas fa-chevron-right"></i>
+                        </div>
+
+                        <div class="stage-container" data-stage="splitting" onclick="selectStage('splitting')">
+                            <div class="stage-icon">
+                                <i class="fas fa-cut"></i>
+                            </div>
+                            <div class="stage-info">
+                                <div class="stage-title">Splitting</div>
+                                <div class="stage-count" id="splittingStageCount">0</div>
+                            </div>
+                        </div>
+
+                        <div class="pipeline-arrow">
+                            <i class="fas fa-chevron-right"></i>
+                        </div>
+
+                        <div class="stage-container" data-stage="completed" onclick="selectStage('completed')">
+                            <div class="stage-icon">
+                                <i class="fas fa-check-circle"></i>
+                            </div>
+                            <div class="stage-info">
+                                <div class="stage-title">Completed</div>
+                                <div class="stage-count" id="completedStageCount">0</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stage Details - Only visible when stage is selected -->
+    <div class="row" id="stageDetailsSection" style="display: none;">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0" id="selectedStageTitle">Stage Documents</h5>
+                    <small class="text-muted" id="selectedStageDescription"></small>
+                </div>
+                <div class="card-body">
+                    <div id="stageDocumentsList" class="document-list">
+                        <!-- Documents will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Task Output - Only visible when task is selected -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0" id="selectedTaskTitle">Task Output</h5>
+                    <small class="text-muted">Select a document to view its processing details</small>
+                </div>
+                <div class="card-body" id="taskOutputContent">
+                    <div class="text-center text-muted py-5">
+                        <i class="fas fa-mouse-pointer fa-2x mb-3"></i>
+                        <p>Select a document from the list to view its processing output</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Upload Modal -->
+<div class="modal fade" id="uploadModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-cloud-upload-alt me-2"></i>Upload Documents
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Upload Area -->
+                <div class="upload-drop-zone" id="uploadDropZone">
+                    <div class="text-center py-4">
+                        <i class="fas fa-cloud-upload-alt fa-3x text-primary mb-3"></i>
+                        <h5>Drop PDF files here or click to browse</h5>
+                        <p class="text-muted">You can upload multiple PDF files at once</p>
+                        <input type="file" id="fileInput" multiple accept=".pdf" style="display: none;">
+                        <button class="btn btn-outline-primary" onclick="document.getElementById('fileInput').click()">
+                            <i class="fas fa-folder-open me-1"></i>Browse Files
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Configuration -->
+                <div class="mt-4">
+                    <h6>Processing Configuration</h6>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Batch Size</label>
+                            <select class="form-select" id="batchSize">
+                                <option value="2">2 pages per batch</option>
+                                <option value="3">3 pages per batch</option>
+                                <option value="4" selected>4 pages per batch</option>
+                                <option value="5">5 pages per batch</option>
+                                <option value="6">6 pages per batch</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Overlap Pages</label>
+                            <select class="form-select" id="overlapPages">
+                                <option value="0" selected>No overlap</option>
+                                <option value="1">1 page overlap</option>
+                                <option value="2">2 pages overlap</option>
+                                <option value="3">3 pages overlap</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- File List -->
+                <div class="mt-4" id="fileListContainer" style="display: none;">
+                    <h6>Selected Files</h6>
+                    <div id="fileList" class="selected-files-list"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="startProcessingBtn" onclick="startProcessing()" disabled>
+                    <i class="fas fa-play me-1"></i>Start Processing
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Global variables
+let allTasks = {};
+let selectedStage = null;
+let selectedTaskId = null;
+let selectedFiles = [];
+let updateInterval = null;
+
+// Stage configuration
+const STAGES = {
+    upload: { title: 'Upload Queue', description: 'Documents waiting to be processed', icon: 'fas fa-upload' },
+    pdf_processing: { title: 'PDF Processing', description: 'Extracting content and metadata from PDFs', icon: 'fas fa-file-pdf' },
+    splitting: { title: 'Document Splitting', description: 'Creating page batches for processing', icon: 'fas fa-cut' },
+    completed: { title: 'Completed', description: 'Successfully processed documents', icon: 'fas fa-check-circle' },
+    error: { title: 'Errors', description: 'Documents that encountered processing errors', icon: 'fas fa-exclamation-triangle' }
+};
+
+// Initialize dashboard
+document.addEventListener('DOMContentLoaded', function() {
+    initializeUploadModal();
+    startStatusUpdates();
+});
+
+function initializeUploadModal() {
+    const uploadDropZone = document.getElementById('uploadDropZone');
+    const fileInput = document.getElementById('fileInput');
+
+    // Drag and drop functionality
+    uploadDropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadDropZone.classList.add('dragover');
+    });
+
+    uploadDropZone.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        uploadDropZone.classList.remove('dragover');
+    });
+
+    uploadDropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadDropZone.classList.remove('dragover');
+
+        const files = Array.from(e.dataTransfer.files).filter(file =>
+            file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+        );
+
+        if (files.length > 0) {
+            addSelectedFiles(files);
+        }
+    });
+
+    // File input change
+    fileInput.addEventListener('change', (e) => {
+        const files = Array.from(e.target.files);
+        addSelectedFiles(files);
+    });
+}
+
+function addSelectedFiles(files) {
+    selectedFiles = [...selectedFiles, ...files];
+    updateFileList();
+}
+
+function updateFileList() {
+    const fileListContainer = document.getElementById('fileListContainer');
+    const fileList = document.getElementById('fileList');
+    const startBtn = document.getElementById('startProcessingBtn');
+
+    if (selectedFiles.length > 0) {
+        fileListContainer.style.display = 'block';
+        startBtn.disabled = false;
+
+        fileList.innerHTML = selectedFiles.map((file, index) => `
+            <div class="file-item">
+                <div class="file-info">
+                    <i class="fas fa-file-pdf text-danger me-2"></i>
+                    <span class="file-name">${escapeHtml(file.name)}</span>
+                    <small class="file-size text-muted">${formatFileSize(file.size)}</small>
+                </div>
+                <button class="btn btn-sm btn-outline-danger" onclick="removeFile(${index})">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        `).join('');
+    } else {
+        fileListContainer.style.display = 'none';
+        startBtn.disabled = true;
+        fileList.innerHTML = '';
+    }
+}
+
+function removeFile(index) {
+    selectedFiles.splice(index, 1);
+    updateFileList();
+}
+
+function showUploadModal() {
+    const modal = new bootstrap.Modal(document.getElementById('uploadModal'));
+    modal.show();
+}
+
+async function startProcessing() {
+    const batchSize = parseInt(document.getElementById('batchSize').value);
+    const overlapPages = parseInt(document.getElementById('overlapPages').value);
+    const startBtn = document.getElementById('startProcessingBtn');
+
+    startBtn.disabled = true;
+    startBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Processing...';
+
+    try {
+        for (const file of selectedFiles) {
+            await submitFile(file, batchSize, overlapPages);
+        }
+
+        // Reset form
+        selectedFiles = [];
+        document.getElementById('fileInput').value = '';
+        updateFileList();
+
+        // Close modal
+        const modal = bootstrap.Modal.getInstance(document.getElementById('uploadModal'));
+        modal.hide();
+
+        showAlert('Documents submitted successfully!', 'success');
+
+    } catch (error) {
+        console.error('Error submitting files:', error);
+        showAlert('Error submitting files: ' + error.message, 'danger');
+    } finally {
+        startBtn.disabled = false;
+        startBtn.innerHTML = '<i class="fas fa-play me-1"></i>Start Processing';
+    }
+}
+
+async function submitFile(file, batchSize, overlapPages) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('batch_size', batchSize);
+    formData.append('overlap_pages', overlapPages);
+
+    const response = await fetch('/api/pipeline/submit', {
+        method: 'POST',
+        body: formData
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to submit ${file.name}: ${errorText}`);
+    }
+
+    return response.json();
+}
+
+function startStatusUpdates() {
+    loadTasks();
+    if (updateInterval) clearInterval(updateInterval);
+    updateInterval = setInterval(loadTasks, 3000); // Update every 3 seconds
+}
+
+async function loadTasks() {
+    try {
+        const response = await fetch('/api/pipeline/tasks');
+        if (response.ok) {
+            allTasks = await response.json();
+            updateDashboard();
+        }
+    } catch (error) {
+        console.error('Error loading tasks:', error);
+    }
+}
+
+function updateDashboard() {
+    updateStatusCards();
+    updateStageFlow();
+    if (selectedStage) {
+        updateStageDetails();
+    }
+    if (selectedTaskId) {
+        updateTaskOutput().catch(error => {
+            console.error('Error updating task output:', error);
+        });
+    }
+}
+
+function updateStatusCards() {
+    const tasks = Object.values(allTasks);
+
+    const queueCount = tasks.filter(t => t.status === 'upload').length;
+    const processingCount = tasks.filter(t => ['pdf_processing', 'splitting'].includes(t.status)).length;
+    const completedCount = tasks.filter(t => t.status === 'completed').length;
+    const errorCount = tasks.filter(t => t.status === 'error').length;
+
+    document.getElementById('queueCount').textContent = queueCount;
+    document.getElementById('processingCount').textContent = processingCount;
+    document.getElementById('completedCount').textContent = completedCount;
+    document.getElementById('errorCount').textContent = errorCount;
+}
+
+function updateStageFlow() {
+    const tasks = Object.values(allTasks);
+
+    // Count tasks by stage
+    const stageCounts = {
+        upload: tasks.filter(t => t.status === 'upload').length,
+        pdf_processing: tasks.filter(t => t.status === 'pdf_processing').length,
+        splitting: tasks.filter(t => t.status === 'splitting').length,
+        completed: tasks.filter(t => t.status === 'completed').length
+    };
+
+    // Update stage counts
+    document.getElementById('uploadStageCount').textContent = stageCounts.upload;
+    document.getElementById('processingStageCount').textContent = stageCounts.pdf_processing;
+    document.getElementById('splittingStageCount').textContent = stageCounts.splitting;
+    document.getElementById('completedStageCount').textContent = stageCounts.completed;
+
+    // Update active state
+    document.querySelectorAll('.stage-container').forEach(container => {
+        const stage = container.dataset.stage;
+        container.classList.toggle('selected', selectedStage === stage);
+        container.classList.toggle('has-tasks', stageCounts[stage] > 0);
+    });
+}
+
+function selectStage(stage) {
+    selectedStage = stage;
+    selectedTaskId = null; // Reset task selection
+
+    document.getElementById('stageDetailsSection').style.display = 'block';
+    updateStageDetails();
+    clearTaskOutput();
+}
+
+function updateStageDetails() {
+    const stage = STAGES[selectedStage];
+    if (!stage) return;
+
+    document.getElementById('selectedStageTitle').textContent = stage.title;
+    document.getElementById('selectedStageDescription').textContent = stage.description;
+
+    const tasks = Object.values(allTasks).filter(task => {
+        if (selectedStage === 'error') return task.status === 'error';
+        return task.status === selectedStage;
+    });
+
+    const documentsList = document.getElementById('stageDocumentsList');
+
+    if (tasks.length === 0) {
+        documentsList.innerHTML = `
+            <div class="text-center text-muted py-4">
+                <i class="${stage.icon} fa-2x mb-3"></i>
+                <p>No documents in this stage</p>
+            </div>
+        `;
+        return;
+    }
+
+    documentsList.innerHTML = tasks.map(task => createTaskCard(task)).join('');
+}
+
+function createTaskCard(task) {
+    const fileName = getFileName(task);
+    const progress = Math.round(task.progress || 0);
+    const statusClass = getStatusClass(task.status);
+    const taskId = task.task_id;
+    const isCompleted = task.status === 'completed';
+
+    return `
+        <div class="task-card ${selectedTaskId === taskId ? 'selected' : ''}" onclick="${isCompleted ? `openFullscreenView('${taskId}')` : `selectTask('${taskId}')`}">
+            <div class="task-header">
+                <div class="task-title">
+                    <i class="fas fa-file-pdf text-danger me-2"></i>
+                    <span>${escapeHtml(fileName)}</span>
+                    ${isCompleted ? '<i class="fas fa-expand-alt ms-2 text-primary" title="Click to view full-screen"></i>' : ''}
+                </div>
+                <span class="badge bg-${statusClass}">${formatStatus(task.status)}</span>
+            </div>
+            <div class="task-meta">
+                <div class="progress mt-2" style="height: 4px;">
+                    <div class="progress-bar bg-${statusClass}" style="width: ${progress}%"></div>
+                </div>
+                <div class="task-stats mt-2">
+                    <small class="text-muted">
+                        ${progress}% • ${task.completed_batches || 0}/${task.total_batches || 0} batches
+                        ${task.error_message ? '• <span class="text-danger">Error</span>' : ''}
+                        ${isCompleted ? '• <span class="text-primary">Click for full view</span>' : ''}
+                    </small>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function selectTask(taskId) {
+    selectedTaskId = taskId;
+    updateStageDetails(); // Refresh to show selection
+    updateTaskOutput().catch(error => {
+        console.error('Error updating task output:', error);
+    });
+}
+
+async function updateTaskOutput() {
+    const task = allTasks[selectedTaskId];
+    if (!task) return;
+
+    const fileName = getFileName(task);
+    document.getElementById('selectedTaskTitle').textContent = fileName;
+
+    const content = document.getElementById('taskOutputContent');
+
+    // Preserve active tab
+    const activeTabEl = document.querySelector('.stage-tabs .nav-link.active');
+    const activeStage = activeTabEl ? activeTabEl.dataset.stage : 'summary';
+
+    // Create stage tabs based on task progress
+    const completedStages = getCompletedStages(task);
+    const stageTabsHTML = createStageTabs(completedStages, task, activeStage);
+
+    let outputHTML = `
+        <div class="stage-tabs-container">
+            ${stageTabsHTML}
+        </div>
+        <div class="stage-content-container" id="stageContentContainer">
+            <div class="text-center py-4">
+                <div class="spinner-border" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        </div>
+    `;
+
+    content.innerHTML = outputHTML;
+
+    // Bind tab click handlers
+    bindStageTabHandlers(task);
+    
+    // Load initial content
+    try {
+        const stageContent = await createStageContent(activeStage, task);
+        document.getElementById('stageContentContainer').innerHTML = stageContent;
+    } catch (error) {
+        console.error('Error loading initial stage content:', error);
+        document.getElementById('stageContentContainer').innerHTML = `
+            <div class="alert alert-danger">
+                Error loading content: ${error.message}
+            </div>
+        `;
+    }
+}
+
+function getCompletedStages(task) {
+    const stages = [
+        { id: 'summary', name: 'Summary', icon: 'fas fa-chart-bar', available: true },
+        { id: 'pdf_processing', name: 'PDF Processing', icon: 'fas fa-file-pdf', available: task.status !== 'upload' },
+        { id: 'splitting', name: 'Splitting', icon: 'fas fa-cut', available: task.status === 'completed' || task.status === 'splitting' },
+        { id: 'batches', name: 'Batches', icon: 'fas fa-layer-group', available: task.batches && task.batches.length > 0 }
+    ];
+
+    return stages.filter(stage => stage.available);
+}
+
+function createStageTabs(stages, task, activeStage) {
+    return `
+        <div class="nav nav-pills stage-tabs" role="tablist">
+            ${stages.map((stage, index) => `
+                <button class="nav-link ${activeStage === stage.id ? 'active' : ''}"
+                        id="tab-${stage.id}"
+                        data-stage="${stage.id}"
+                        type="button" role="tab">
+                    <i class="${stage.icon} me-2"></i>
+                    ${stage.name}
+                </button>
+            `).join('')}
+        </div>
+    `;
+}
+
+async function createStageContent(activeStage, task) {
+    switch (activeStage) {
+        case 'summary':
+            return createSummaryContent(task);
+        case 'pdf_processing':
+            return await createPdfProcessingContent(task);
+        case 'splitting':
+            return createSplittingContent(task);
+        case 'batches':
+            const batchesContent = createBatchesContent(task);
+            // Initialize the first batch after content is rendered
+            setTimeout(() => initializeBatchesContent(task), 100);
+            return batchesContent;
+        default:
+            return createSummaryContent(task);
+    }
+}
+
+function createSummaryContent(task) {
+    return `
+        <div class="task-summary">
+            <h6>Task Overview</h6>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div class="info-item">
+                        <label>Status</label>
+                        <span class="badge bg-${getStatusClass(task.status)}">${formatStatus(task.status)}</span>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="info-item">
+                        <label>Progress</label>
+                        <div class="progress mt-1" style="height: 8px;">
+                            <div class="progress-bar bg-${getStatusClass(task.status)}"
+                                 style="width: ${Math.round(task.progress || 0)}%"></div>
+                        </div>
+                        <small class="text-muted">${Math.round(task.progress || 0)}%</small>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="info-item">
+                        <label>Total Pages</label>
+                        <span>${task.document_info?.total_pages || 'N/A'}</span>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="info-item">
+                        <label>Processing Time</label>
+                        <span>${getProcessingTime(task)}</span>
+                    </div>
+                </div>
+            </div>
+
+            ${task.config ? `
+                <div class="mt-4">
+                    <h6>Configuration</h6>
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <div class="info-item">
+                                <label>Batch Size</label>
+                                <span>${task.config.batch_size} pages</span>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="info-item">
+                                <label>Overlap</label>
+                                <span>${task.config.overlap_pages} pages</span>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="info-item">
+                                <label>Source</label>
+                                <span>${escapeHtml(task.document_info?.source_type || 'upload')}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
+
+            ${task.error_message ? `
+                <div class="alert alert-danger mt-4">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Error:</strong> ${escapeHtml(task.error_message)}
+                </div>
+            ` : ''}
+        </div>
+    `;
+}
+
+async function createPdfProcessingContent(task) {
+    if (task.status === 'upload') {
+        return `
+            <div class="text-center text-muted py-4">
+                <i class="fas fa-clock fa-2x mb-3"></i>
+                <p>PDF processing hasn't started yet</p>
+            </div>
+        `;
+    }
+
+    const metadata = task.document_info?.metadata || {};
+
+    // Try to load images if the task is completed
+    let imagesHTML = '';
+    if (task.status === 'completed') {
+        try {
+            const response = await fetch(`/api/pipeline/tasks/${task.task_id}/images`);
+            if (response.ok) {
+                const data = await response.json();
+                imagesHTML = `
+                    <div class="mt-4">
+                        <h6><i class="fas fa-images me-2"></i>Processed Page Images</h6>
+                        <div class="row g-3">
+                            ${data.pages.slice(0, 6).map(page => `
+                                <div class="col-md-4">
+                                    <div class="pdf-page-card">
+                                        <img src="data:image/png;base64,${page.image}" 
+                                             alt="Page ${page.page_number}" 
+                                             class="pdf-page-image"
+                                             onclick="openImageModal(this.src, 'Page ${page.page_number}')">
+                                        <div class="pdf-page-info">
+                                            <div class="pdf-page-number">Page ${page.page_number}</div>
+                                            <div class="pdf-page-size">Click to enlarge</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        ${data.total_pages > 6 ? `
+                            <div class="text-center mt-3">
+                                <button class="btn btn-outline-primary" onclick="openFullscreenView('${task.task_id}')">
+                                    <i class="fas fa-expand me-2"></i>View All ${data.total_pages} Pages
+                                </button>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('Error loading images for PDF processing tab:', error);
+        }
+    }
+
+    return `
+        <div class="pdf-processing-output">
+            <h6>PDF Processing Results</h6>
+
+            <div class="row g-4">
+                <div class="col-md-6">
+                    <div class="output-section">
+                        <h6><i class="fas fa-info-circle me-2"></i>Document Metadata</h6>
+                        <div class="metadata-list">
+                            ${Object.entries(metadata).length > 0 ? Object.entries(metadata).map(([key, value]) => `
+                                <div class="metadata-item">
+                                    <span class="metadata-label">${key.charAt(0).toUpperCase() + key.slice(1)}:</span>
+                                    <span class="metadata-value">${value || 'N/A'}</span>
+                                </div>
+                            `).join('') : '<p class="text-muted">No metadata available</p>'}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div class="output-section">
+                        <h6><i class="fas fa-chart-pie me-2"></i>Processing Stats</h6>
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <div class="stat-value">${task.document_info?.total_pages || 0}</div>
+                                <div class="stat-label">Total Pages</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value">${task.document_info?.file_size ? formatFileSize(task.document_info.file_size) : 'N/A'}</div>
+                                <div class="stat-label">File Size</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value">${task.document_info?.source_type || 'Unknown'}</div>
+                                <div class="stat-label">Source</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="processing-status mt-4">
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-check-circle text-success me-2"></i>
+                    <span>PDF successfully processed and converted to images with page numbers</span>
+                </div>
+            </div>
+
+            ${imagesHTML}
+        </div>
+    `;
+}
+
+function createSplittingContent(task) {
+    if (!task.batches || task.batches.length === 0) {
+        return `
+            <div class="text-center text-muted py-4">
+                <i class="fas fa-clock fa-2x mb-3"></i>
+                <p>Document splitting hasn't started yet</p>
+            </div>
+        `;
+    }
+
+    return `
+        <div class="splitting-output">
+            <h6>Document Splitting Results</h6>
+
+            <div class="splitting-summary mb-4">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <div class="summary-stat">
+                            <div class="stat-number">${task.batches.length}</div>
+                            <div class="stat-text">Total Batches</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="summary-stat">
+                            <div class="stat-number">${task.config?.batch_size || 'N/A'}</div>
+                            <div class="stat-text">Batch Size</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="summary-stat">
+                            <div class="stat-number">${task.config?.overlap_pages || 0}</div>
+                            <div class="stat-text">Overlap Pages</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="summary-stat">
+                            <div class="stat-number">${task.document_info?.total_pages || 0}</div>
+                            <div class="stat-text">Total Pages</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="batch-visualization">
+                <h6>Batch Layout Visualization</h6>
+                <div class="page-timeline">
+                    ${createPageTimeline(task)}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function createBatchesContent(task) {
+    if (!task.batches || task.batches.length === 0) {
+        return `
+            <div class="text-center text-muted py-4">
+                <i class="fas fa-layer-group fa-2x mb-3"></i>
+                <p>No batches available yet</p>
+            </div>
+        `;
+    }
+
+    return `
+        <div class="batches-output">
+            <div class="mb-3">
+                <h6><i class="fas fa-layer-group me-2"></i>Document Batches</h6>
+                <p class="text-muted mb-0">Select a batch to view its pages • ${task.batches.length} batches total</p>
+            </div>
+            
+            <!-- Batch Tabs -->
+            <div class="batch-tabs-container">
+                <div class="batch-tabs" role="tablist">
+                    ${task.batches.map((batch, index) => `
+                        <button class="batch-tab ${index === 0 ? 'active' : ''}" 
+                                data-batch-id="${batch.batch_id}"
+                                data-batch-index="${index}"
+                                onclick="switchBatchTab('${task.task_id}', '${batch.batch_id}', ${index})"
+                                role="tab">
+                            <div class="batch-tab-header">
+                                <span class="batch-tab-title">Batch ${batch.batch_number}</span>
+                                <span class="batch-tab-pages">Pages ${batch.start_page}-${batch.end_page}</span>
+                            </div>
+                            <div class="batch-tab-count">${batch.page_count}</div>
+                        </button>
+                    `).join('')}
+                </div>
+            </div>
+            
+            <!-- Batch Content -->
+            <div class="batch-content-container" id="batchContentContainer">
+                <div class="batch-loading">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2 text-muted">Loading batch pages...</p>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function createPageTimeline(task) {
+    if (!task.batches || task.batches.length === 0) return '';
+
+    const totalPages = task.document_info?.total_pages || 0;
+    if (totalPages === 0) return '';
+
+    let timeline = '<div class="timeline-container">';
+
+    // Create page blocks
+    for (let page = 1; page <= totalPages; page++) {
+        const batch = task.batches.find(b => page >= b.start_page && page <= b.end_page);
+        const batchNumber = batch ? batch.batch_number : 0;
+        const isOverlap = task.batches.filter(b => page >= b.start_page && page <= b.end_page).length > 1;
+
+        timeline += `
+            <div class="timeline-page ${isOverlap ? 'overlap' : ''}"
+                 style="background-color: ${getPageColor(batchNumber)}"
+                 title="Page ${page}${batch ? ` (Batch ${batch.batch_number})` : ''}${isOverlap ? ' - Overlap' : ''}">
+                ${page}
+            </div>
+        `;
+    }
+
+    timeline += '</div>';
+
+    // Add legend
+    timeline += `
+        <div class="timeline-legend mt-3">
+            ${task.batches.map(batch => `
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: ${getPageColor(batch.batch_number)}"></div>
+                    <span>Batch ${batch.batch_number}</span>
+                </div>
+            `).join('')}
+            <div class="legend-item">
+                <div class="legend-color overlap-pattern"></div>
+                <span>Overlap</span>
+            </div>
+        </div>
+    `;
+
+    return timeline;
+}
+
+function getPageColor(batchNumber) {
+    const colors = [
+        '#e3f2fd', '#f3e5f5', '#e8f5e8', '#fff3e0',
+        '#fce4ec', '#f1f8e9', '#e0f2f1', '#fff8e1'
+    ];
+    return colors[(batchNumber - 1) % colors.length] || '#f5f5f5';
+}
+
+function bindStageTabHandlers(task) {
+    document.querySelectorAll('.stage-tabs .nav-link').forEach(tab => {
+        tab.addEventListener('click', async (e) => {
+            e.preventDefault();
+
+            // Update active tab
+            document.querySelectorAll('.stage-tabs .nav-link').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+
+            // Update content
+            const stage = tab.dataset.stage;
+            const container = document.getElementById('stageContentContainer');
+            
+            // Show loading
+            container.innerHTML = `
+                <div class="text-center py-4">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            `;
+            
+            try {
+                const content = await createStageContent(stage, task);
+                container.innerHTML = content;
+            } catch (error) {
+                console.error('Error loading stage content:', error);
+                container.innerHTML = `
+                    <div class="alert alert-danger">
+                        Error loading content: ${error.message}
+                    </div>
+                `;
+            }
+        });
+    });
+}
+
+function getProcessingTime(task) {
+    if (task.started_at && task.completed_at) {
+        const start = new Date(task.started_at);
+        const end = new Date(task.completed_at);
+        const diffMs = end - start;
+        const diffSecs = Math.round(diffMs / 1000);
+
+        if (diffSecs < 60) return `${diffSecs}s`;
+        const diffMins = Math.floor(diffSecs / 60);
+        const remainingSecs = diffSecs % 60;
+        return `${diffMins}m ${remainingSecs}s`;
+    }
+
+    if (task.started_at) {
+        const start = new Date(task.started_at);
+        const now = new Date();
+        const diffMs = now - start;
+        const diffSecs = Math.round(diffMs / 1000);
+        return `${diffSecs}s (ongoing)`;
+    }
+
+    return 'Not started';
+}
+
+function clearTaskOutput() {
+    document.getElementById('taskOutputContent').innerHTML = `
+        <div class="text-center text-muted py-5">
+            <i class="fas fa-mouse-pointer fa-2x mb-3"></i>
+            <p>Select a document from the list to view its processing output</p>
+        </div>
+    `;
+}
+
+async function clearCompleted() {
+    if (!confirm('Clear all completed tasks?')) return;
+
+    try {
+        const response = await fetch('/api/pipeline/clear-completed', { method: 'POST' });
+        if (response.ok) {
+            showAlert('Completed tasks cleared', 'success');
+            loadTasks();
+        }
+    } catch (error) {
+        console.error('Error clearing tasks:', error);
+        showAlert('Error clearing tasks', 'danger');
+    }
+}
+
+// Utility functions
+function getFileName(task) {
+    const path = task.document_info?.file_path || 'Unknown';
+    return path.split('/').pop() || path;
+}
+
+function formatStatus(status) {
+    return status.split('_').map(word =>
+        word.charAt(0).toUpperCase() + word.slice(1)
+    ).join(' ');
+}
+
+function getStatusClass(status) {
+    const classes = {
+        upload: 'info',
+        pdf_processing: 'warning',
+        splitting: 'primary',
+        completed: 'success',
+        error: 'danger',
+        pending: 'secondary'
+    };
+    return classes[status] || 'secondary';
+}
+
+function formatFileSize(bytes) {
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    if (bytes === 0) return '0 Bytes';
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function showAlert(message, type) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+
+    document.querySelector('.container-fluid').insertBefore(alertDiv, document.querySelector('.container-fluid').firstChild);
+
+    setTimeout(() => {
+        alertDiv.remove();
+    }, 5000);
+}
+
+// Full-screen document view functions
+async function openFullscreenView(taskId) {
+    try {
+        const task = allTasks[taskId];
+        if (!task) {
+            showAlert('Task not found', 'danger');
+            return;
+        }
+
+        // Create fullscreen overlay
+        const overlay = document.createElement('div');
+        overlay.className = 'document-fullscreen-overlay';
+        overlay.innerHTML = createFullscreenHTML(task);
+        document.body.appendChild(overlay);
+
+        // Show overlay with animation
+        setTimeout(() => overlay.classList.add('show'), 10);
+
+        // Bind event handlers
+        bindFullscreenHandlers(taskId, overlay);
+
+        // Load default tab content
+        await loadFullscreenTabContent(taskId, 'summary');
+
+    } catch (error) {
+        console.error('Error opening fullscreen view:', error);
+        showAlert('Error opening document view', 'danger');
+    }
+}
+
+function createFullscreenHTML(task) {
+    const fileName = getFileName(task);
+    
+    return `
+        <div class="document-fullscreen-header">
+            <div class="document-fullscreen-title">
+                <i class="fas fa-file-pdf text-danger"></i>
+                <span>${escapeHtml(fileName)}</span>
+                <span class="badge bg-success ms-2">Completed</span>
+            </div>
+            <div class="document-fullscreen-controls">
+                <button class="document-fullscreen-close" onclick="closeFullscreenView()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        </div>
+        
+        <div class="document-fullscreen-content">
+            <div class="document-fullscreen-main">
+                <div class="fullscreen-tabs">
+                    <ul class="nav nav-pills" role="tablist">
+                        <li class="nav-item">
+                            <button class="nav-link active" data-tab="summary" onclick="switchFullscreenTab('${task.task_id}', 'summary')">
+                                <i class="fas fa-chart-bar me-2"></i>Summary
+                            </button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-tab="pdf_processing" onclick="switchFullscreenTab('${task.task_id}', 'pdf_processing')">
+                                <i class="fas fa-file-pdf me-2"></i>PDF Processing
+                            </button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-tab="splitting" onclick="switchFullscreenTab('${task.task_id}', 'splitting')">
+                                <i class="fas fa-cut me-2"></i>Splitting
+                            </button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-tab="batches" onclick="switchFullscreenTab('${task.task_id}', 'batches')">
+                                <i class="fas fa-layer-group me-2"></i>Batches
+                            </button>
+                        </li>
+                    </ul>
+                </div>
+                
+                <div class="fullscreen-tab-content" id="fullscreenTabContent">
+                    <div class="fullscreen-loading">
+                        <div class="fullscreen-loading-spinner"></div>
+                        <p>Loading content...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function bindFullscreenHandlers(taskId, overlay) {
+    // Close on ESC key
+    document.addEventListener('keydown', function escapeHandler(e) {
+        if (e.key === 'Escape') {
+            closeFullscreenView();
+            document.removeEventListener('keydown', escapeHandler);
+        }
+    });
+
+    // Close on background click
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+            closeFullscreenView();
+        }
+    });
+}
+
+async function switchFullscreenTab(taskId, tabName) {
+    // Update active tab
+    document.querySelectorAll('.fullscreen-tabs .nav-link').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+
+    // Load tab content
+    await loadFullscreenTabContent(taskId, tabName);
+}
+
+async function loadFullscreenTabContent(taskId, tabName) {
+    const contentContainer = document.getElementById('fullscreenTabContent');
+    
+    // Show loading
+    contentContainer.innerHTML = `
+        <div class="fullscreen-loading">
+            <div class="fullscreen-loading-spinner"></div>
+            <p>Loading ${tabName.replace('_', ' ')} content...</p>
+        </div>
+    `;
+
+    try {
+        const task = allTasks[taskId];
+        let content = '';
+
+        switch (tabName) {
+            case 'summary':
+                content = createFullscreenSummaryContent(task);
+                break;
+            case 'pdf_processing':
+                content = await createFullscreenPdfProcessingContent(taskId);
+                break;
+            case 'splitting':
+                content = createFullscreenSplittingContent(task);
+                break;
+            case 'batches':
+                content = createFullscreenBatchesContent(task, taskId);
+                break;
+        }
+
+        contentContainer.innerHTML = content;
+
+    } catch (error) {
+        console.error('Error loading tab content:', error);
+        contentContainer.innerHTML = `
+            <div class="alert alert-danger m-4">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                Error loading content: ${error.message}
+            </div>
+        `;
+    }
+}
+
+function createFullscreenSummaryContent(task) {
+    const processingTime = getProcessingTime(task);
+    const metadata = task.document_info?.metadata || {};
+
+    return `
+        <div class="row g-4">
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="fas fa-info-circle me-2"></i>Task Overview</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <div class="info-item">
+                                    <label>Status</label>
+                                    <span class="badge bg-success">Completed</span>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="info-item">
+                                    <label>Total Pages</label>
+                                    <span>${task.document_info?.total_pages || 'N/A'}</span>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="info-item">
+                                    <label>Processing Time</label>
+                                    <span>${processingTime}</span>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="info-item">
+                                    <label>Batches Created</label>
+                                    <span>${task.total_batches || 0}</span>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="info-item">
+                                    <label>Source Type</label>
+                                    <span>${escapeHtml(task.document_info?.source_type || 'upload')}</span>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="info-item">
+                                    <label>Created</label>
+                                    <span>${formatDateTime(task.created_at)}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="fas fa-cog me-2"></i>Configuration</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <div class="info-item">
+                                    <label>Batch Size</label>
+                                    <span>${task.config?.batch_size || 'N/A'} pages</span>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="info-item">
+                                    <label>Overlap Pages</label>
+                                    <span>${task.config?.overlap_pages || 0} pages</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        ${Object.keys(metadata).length > 0 ? `
+                            <div class="mt-4">
+                                <h6>Document Metadata</h6>
+                                <div class="metadata-list">
+                                    ${Object.entries(metadata).map(([key, value]) => `
+                                        <div class="metadata-item">
+                                            <span class="metadata-label">${key.charAt(0).toUpperCase() + key.slice(1)}:</span>
+                                            <span class="metadata-value">${value || 'N/A'}</span>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+async function createFullscreenPdfProcessingContent(taskId) {
+    try {
+        // Fetch processed images
+        const response = await fetch(`/api/pipeline/tasks/${taskId}/images`);
+        if (!response.ok) {
+            throw new Error('Failed to load processed images');
+        }
+        
+        const data = await response.json();
+        
+        return `
+            <div class="mb-4">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5><i class="fas fa-images me-2"></i>Processed PDF Pages</h5>
+                    <small class="text-muted">${data.total_pages} pages converted to images</small>
+                </div>
+                <div class="processing-status mt-3">
+                    <div class="d-flex align-items-center">
+                        <i class="fas fa-check-circle text-success me-2"></i>
+                        <span>PDF successfully processed and converted to images with page numbers</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="pdf-images-grid">
+                ${data.pages.map(page => `
+                    <div class="pdf-page-card">
+                        <img src="data:image/png;base64,${page.image}" 
+                             alt="Page ${page.page_number}" 
+                             class="pdf-page-image"
+                             onclick="openImageModal(this.src, 'Page ${page.page_number}')">
+                        <div class="pdf-page-info">
+                            <div class="pdf-page-number">Page ${page.page_number}</div>
+                            <div class="pdf-page-size">Click to enlarge</div>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    } catch (error) {
+        return `
+            <div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                Unable to load processed images: ${error.message}
+            </div>
+        `;
+    }
+}
+
+function createFullscreenSplittingContent(task) {
+    if (!task.batches || task.batches.length === 0) {
+        return `
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                No batch information available
+            </div>
+        `;
+    }
+
+    const totalPages = task.document_info?.total_pages || 0;
+
+    return `
+        <div class="row g-4 mb-4">
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <div class="stat-number">${task.batches.length}</div>
+                        <div class="stat-text">Total Batches</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <div class="stat-number">${task.config?.batch_size || 'N/A'}</div>
+                        <div class="stat-text">Batch Size</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <div class="stat-number">${task.config?.overlap_pages || 0}</div>
+                        <div class="stat-text">Overlap Pages</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <div class="stat-number">${totalPages}</div>
+                        <div class="stat-text">Total Pages</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h6><i class="fas fa-chart-bar me-2"></i>Batch Layout Visualization</h6>
+            </div>
+            <div class="card-body">
+                ${createPageTimeline(task)}
+            </div>
+        </div>
+    `;
+}
+
+function createFullscreenBatchesContent(task, taskId) {
+    if (!task.batches || task.batches.length === 0) {
+        return `
+            <div class="alert alert-info">
+                <i class="fas fa-layer-group me-2"></i>
+                No batches available
+            </div>
+        `;
+    }
+
+    return `
+        <div class="mb-3">
+            <h5><i class="fas fa-layer-group me-2"></i>Document Batches</h5>
+            <p class="text-muted">Click on any batch to view its pages</p>
+        </div>
+        
+        <div class="fullscreen-batch-grid">
+            ${task.batches.map(batch => `
+                <div class="fullscreen-batch-card" onclick="openBatchModal('${taskId}', '${batch.batch_id}')">
+                    <div class="fullscreen-batch-card-header">
+                        <div class="fullscreen-batch-card-title">Batch ${batch.batch_number}</div>
+                        <div class="fullscreen-batch-card-subtitle">Pages ${batch.start_page} - ${batch.end_page}</div>
+                    </div>
+                    <div class="fullscreen-batch-card-body">
+                        <div class="fullscreen-batch-info">
+                            <div class="fullscreen-batch-info-item">
+                                <div class="fullscreen-batch-info-label">Page Range</div>
+                                <div class="fullscreen-batch-info-value">${batch.start_page} - ${batch.end_page}</div>
+                            </div>
+                            <div class="fullscreen-batch-info-item">
+                                <div class="fullscreen-batch-info-label">Page Count</div>
+                                <div class="fullscreen-batch-info-value">${batch.page_count}</div>
+                            </div>
+                            <div class="fullscreen-batch-info-item">
+                                <div class="fullscreen-batch-info-label">Status</div>
+                                <div class="fullscreen-batch-info-value">Ready</div>
+                            </div>
+                            <div class="fullscreen-batch-info-item">
+                                <div class="fullscreen-batch-info-label">Created</div>
+                                <div class="fullscreen-batch-info-value">${formatDateTime(batch.created_at)}</div>
+                            </div>
+                        </div>
+                        
+                        <div class="fullscreen-batch-pages-preview">
+                            ${Array.from({length: batch.page_count}, (_, i) => `
+                                <div class="fullscreen-batch-page-indicator" title="Page ${batch.start_page + i}">
+                                    ${batch.start_page + i}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+async function openBatchModal(taskId, batchId) {
+    try {
+        // Create modal with loading state first
+        const modal = document.createElement('div');
+        modal.className = 'batch-modal-overlay';
+        modal.innerHTML = `
+            <div class="batch-modal">
+                <div class="batch-modal-header">
+                    <div class="batch-modal-title">
+                        <i class="fas fa-layer-group"></i>
+                        Loading Batch...
+                    </div>
+                    <button class="batch-modal-close" onclick="closeBatchModal()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="batch-modal-body">
+                    <div class="fullscreen-loading">
+                        <div class="fullscreen-loading-spinner"></div>
+                        <p>Loading batch images...</p>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        // Force a reflow and then add the show class with proper timing
+        modal.offsetHeight;
+        setTimeout(() => modal.classList.add('show'), 50);
+        
+        // Fetch batch images
+        const response = await fetch(`/api/pipeline/tasks/${taskId}/batches/${batchId}/images`);
+        if (!response.ok) {
+            throw new Error('Failed to load batch images');
+        }
+        
+        const batchData = await response.json();
+        
+        // Update modal with enhanced scrollable slider content
+        modal.innerHTML = `
+            <div class="batch-modal">
+                <div class="batch-modal-header">
+                    <div class="batch-modal-title">
+                        <i class="fas fa-layer-group me-2"></i>
+                        Batch ${batchData.batch_number}
+                        <span class="batch-header-subtitle">Pages ${batchData.start_page}-${batchData.end_page} • ${batchData.pages.length} pages</span>
+                    </div>
+                    <button class="batch-modal-close" onclick="closeBatchModal()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="batch-modal-body">
+                    <div class="batch-info-strip">
+                        <div class="batch-navigation-controls">
+                            <button class="nav-btn" id="prevPage" onclick="navigateBatchPage(-1)" disabled>
+                                <i class="fas fa-chevron-left"></i>
+                            </button>
+                            <span class="page-indicator" id="pageIndicator">1 / ${batchData.pages.length}</span>
+                            <button class="nav-btn" id="nextPage" onclick="navigateBatchPage(1)" ${batchData.pages.length === 1 ? 'disabled' : ''}>
+                                <i class="fas fa-chevron-right"></i>
+                            </button>
+                        </div>
+                        <div class="batch-view-options">
+                            <button class="view-btn active" onclick="setBatchView('single')" data-view="single">
+                                <i class="fas fa-square me-1"></i>Single
+                            </button>
+                            <button class="view-btn" onclick="setBatchView('grid')" data-view="grid">
+                                <i class="fas fa-th me-1"></i>Grid
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Single Page View (Default) -->
+                    <div class="batch-single-view" id="singleView">
+                        <div class="page-container">
+                            <div class="page-image-wrapper">
+                                <img id="currentPageImage" 
+                                     src="data:image/png;base64,${batchData.pages[0].image}" 
+                                     alt="Page ${batchData.pages[0].page_number}" 
+                                     class="current-page-image"
+                                     onclick="openImageModal(this.src, 'Page ${batchData.pages[0].page_number}')">
+                            </div>
+                            <div class="page-info">
+                                <h6 id="currentPageTitle">Page ${batchData.pages[0].page_number}</h6>
+                                <p class="text-muted mb-0">Click image to view full size</p>
+                            </div>
+                        </div>
+                        
+                        <!-- Thumbnail Slider -->
+                        <div class="thumbnail-slider-container">
+                            <div class="thumbnail-slider" id="thumbnailSlider">
+                                ${batchData.pages.map((page, index) => `
+                                    <div class="thumbnail-item ${index === 0 ? 'active' : ''}" 
+                                         onclick="selectBatchPage(${index})" 
+                                         data-page-index="${index}">
+                                        <img src="data:image/png;base64,${page.image}" 
+                                             alt="Page ${page.page_number}" 
+                                             class="thumbnail-image">
+                                        <div class="thumbnail-label">${page.page_number}</div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Grid View (Hidden by default) -->
+                    <div class="batch-grid-view" id="gridView" style="display: none;">
+                        <div class="batch-pages-grid">
+                            ${batchData.pages.map(page => `
+                                <div class="batch-page-card" onclick="openImageModal('data:image/png;base64,${page.image}', 'Page ${page.page_number}')">
+                                    <img src="data:image/png;base64,${page.image}" 
+                                         alt="Page ${page.page_number}" 
+                                         class="batch-page-image">
+                                    <div class="batch-page-info">
+                                        <div class="batch-page-number">Page ${page.page_number}</div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Store batch data for navigation
+        window.currentBatchData = batchData;
+        window.currentBatchPageIndex = 0;
+        
+        // Add keyboard navigation
+        document.addEventListener('keydown', function keyHandler(e) {
+            switch(e.key) {
+                case 'Escape':
+                    closeBatchModal();
+                    document.removeEventListener('keydown', keyHandler);
+                    break;
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    navigateBatchPage(-1);
+                    break;
+                case 'ArrowRight':
+                    e.preventDefault();
+                    navigateBatchPage(1);
+                    break;
+                case '1':
+                    setBatchView('single');
+                    break;
+                case '2':
+                    setBatchView('grid');
+                    break;
+            }
+        });
+        
+        // Close on background click
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeBatchModal();
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error opening batch modal:', error);
+        showAlert('Error loading batch images: ' + error.message, 'danger');
+        closeBatchModal(); // Close the modal if there's an error
+    }
+}
+
+function closeBatchModal() {
+    const modal = document.querySelector('.batch-modal-overlay');
+    if (modal) {
+        modal.classList.remove('show');
+        setTimeout(() => modal.remove(), 300);
+        // Cleanup global variables
+        window.currentBatchData = null;
+        window.currentBatchPageIndex = 0;
+    }
+}
+
+// Navigation functions for the batch modal
+function navigateBatchPage(direction) {
+    if (!window.currentBatchData) return;
+    
+    const newIndex = window.currentBatchPageIndex + direction;
+    if (newIndex >= 0 && newIndex < window.currentBatchData.pages.length) {
+        selectBatchPage(newIndex);
+    }
+}
+
+function selectBatchPage(index) {
+    if (!window.currentBatchData || index < 0 || index >= window.currentBatchData.pages.length) return;
+    
+    window.currentBatchPageIndex = index;
+    const page = window.currentBatchData.pages[index];
+    
+    // Update main image
+    const currentImage = document.getElementById('currentPageImage');
+    const currentTitle = document.getElementById('currentPageTitle');
+    const pageIndicator = document.getElementById('pageIndicator');
+    
+    if (currentImage) {
+        currentImage.src = `data:image/png;base64,${page.image}`;
+        currentImage.alt = `Page ${page.page_number}`;
+        currentImage.onclick = () => openImageModal(currentImage.src, `Page ${page.page_number}`);
+    }
+    
+    if (currentTitle) {
+        currentTitle.textContent = `Page ${page.page_number}`;
+    }
+    
+    if (pageIndicator) {
+        pageIndicator.textContent = `${index + 1} / ${window.currentBatchData.pages.length}`;
+    }
+    
+    // Update navigation buttons
+    const prevBtn = document.getElementById('prevPage');
+    const nextBtn = document.getElementById('nextPage');
+    
+    if (prevBtn) prevBtn.disabled = (index === 0);
+    if (nextBtn) nextBtn.disabled = (index === window.currentBatchData.pages.length - 1);
+    
+    // Update thumbnail active state
+    document.querySelectorAll('.thumbnail-item').forEach((item, itemIndex) => {
+        item.classList.toggle('active', itemIndex === index);
+    });
+    
+    // Scroll thumbnail into view
+    const activeThumbnail = document.querySelector(`.thumbnail-item[data-page-index="${index}"]`);
+    if (activeThumbnail) {
+        activeThumbnail.scrollIntoView({ behavior: 'smooth', inline: 'center' });
+    }
+}
+
+function setBatchView(viewType) {
+    const singleView = document.getElementById('singleView');
+    const gridView = document.getElementById('gridView');
+    const viewButtons = document.querySelectorAll('.view-btn');
+    
+    // Update button states
+    viewButtons.forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-view') === viewType);
+    });
+    
+    // Show/hide appropriate view
+    if (viewType === 'single') {
+        if (singleView) singleView.style.display = 'block';
+        if (gridView) gridView.style.display = 'none';
+    } else if (viewType === 'grid') {
+        if (singleView) singleView.style.display = 'none';
+        if (gridView) gridView.style.display = 'block';
+    }
+}
+
+function openImageModal(imageSrc, title) {
+    const modal = document.createElement('div');
+    modal.className = 'batch-modal-overlay';
+    modal.innerHTML = `
+        <div class="batch-modal" style="max-width: none; width: auto; height: auto;">
+            <div class="batch-modal-header">
+                <div class="batch-modal-title">${title}</div>
+                <button class="batch-modal-close" onclick="closeImageModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="batch-modal-body" style="padding: 1rem; text-align: center;">
+                <img src="${imageSrc}" style="max-width: 100%; max-height: 80vh; border-radius: 8px;">
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    setTimeout(() => modal.classList.add('show'), 10);
+    
+    // Close handlers
+    document.addEventListener('keydown', function escHandler(e) {
+        if (e.key === 'Escape') {
+            closeImageModal();
+            document.removeEventListener('keydown', escHandler);
+        }
+    });
+    
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            closeImageModal();
+        }
+    });
+}
+
+function closeImageModal() {
+    const modal = document.querySelector('.batch-modal-overlay');
+    if (modal) {
+        modal.classList.remove('show');
+        setTimeout(() => modal.remove(), 300);
+    }
+}
+
+function closeFullscreenView() {
+    const overlay = document.querySelector('.document-fullscreen-overlay');
+    if (overlay) {
+        overlay.classList.remove('show');
+        setTimeout(() => overlay.remove(), 300);
+    }
+}
+
+function formatDateTime(isoString) {
+    if (!isoString) return '—';
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return '—';
+    return date.toLocaleString();
+}
+
+// Batch tab switching functionality
+async function switchBatchTab(taskId, batchId, batchIndex) {
+    try {
+        // Update active tab
+        document.querySelectorAll('.batch-tab').forEach(tab => {
+            tab.classList.remove('active');
+        });
+        document.querySelector(`[data-batch-index="${batchIndex}"]`).classList.add('active');
+
+        // Show loading state
+        const container = document.getElementById('batchContentContainer');
+        container.innerHTML = `
+            <div class="batch-loading">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2 text-muted">Loading batch pages...</p>
+            </div>
+        `;
+
+        // Fetch and display batch content
+        await loadBatchContent(taskId, batchId);
+
+    } catch (error) {
+        console.error('Error switching batch tab:', error);
+        const container = document.getElementById('batchContentContainer');
+        container.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                Error loading batch content: ${error.message}
+            </div>
+        `;
+    }
+}
+
+async function loadBatchContent(taskId, batchId) {
+    try {
+        const response = await fetch(`/api/pipeline/tasks/${taskId}/batches/${batchId}/images`);
+        if (!response.ok) {
+            throw new Error('Failed to load batch images');
+        }
+        
+        const batchData = await response.json();
+        const container = document.getElementById('batchContentContainer');
+        
+        container.innerHTML = `
+            <div class="batch-pages-section">
+                <div class="batch-info-bar">
+                    <div class="batch-info-bar-left">
+                        <h6 class="mb-0">
+                            <i class="fas fa-layer-group text-primary me-2"></i>
+                            Batch ${batchData.batch_number} - Pages ${batchData.start_page} to ${batchData.end_page}
+                        </h6>
+                        <small class="text-muted">${batchData.pages.length} pages • Click any image to enlarge</small>
+                    </div>
+                    <div class="batch-info-bar-right">
+                        <span class="badge bg-success">Ready for Processing</span>
+                    </div>
+                </div>
+                
+                <div class="batch-pages-grid-inline">
+                    ${batchData.pages.map(page => `
+                        <div class="batch-page-item-inline">
+                            <div class="batch-page-image-container">
+                                <img src="data:image/png;base64,${page.image}" 
+                                     alt="Page ${page.page_number}" 
+                                     class="batch-page-image-inline"
+                                     onclick="openImageModal(this.src, 'Page ${page.page_number}')">
+                                <div class="batch-page-overlay">
+                                    <i class="fas fa-search-plus"></i>
+                                </div>
+                            </div>
+                            <div class="batch-page-label">
+                                <i class="fas fa-file-alt me-1"></i>
+                                Page ${page.page_number}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+
+    } catch (error) {
+        console.error('Error loading batch content:', error);
+        const container = document.getElementById('batchContentContainer');
+        container.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                Error loading batch images: ${error.message}
+            </div>
+        `;
+    }
+}
+
+// Auto-load first batch when batches content is created
+function initializeBatchesContent(task) {
+    if (task.batches && task.batches.length > 0) {
+        // Load the first batch by default
+        setTimeout(() => {
+            loadBatchContent(task.task_id, task.batches[0].batch_id);
+        }, 100);
+    }
+}
+
+// Cleanup
+window.addEventListener('beforeunload', () => {
+    if (updateInterval) clearInterval(updateInterval);
+});
+</script>
+{% endblock %}

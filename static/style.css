@@ -1,0 +1,165 @@
+/* Custom styles for PDF Processing Application */
+
+body {
+    background-color: #f8f9fa;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.navbar-brand {
+    font-weight: 600;
+}
+
+.card {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transition: box-shadow 0.3s ease;
+}
+
+.card:hover {
+    box-shadow: 0 8px 15px rgba(0, 0, 0, 0.15);
+}
+
+.card-header {
+    border-radius: 12px 12px 0 0 !important;
+    font-weight: 600;
+}
+
+.btn {
+    border-radius: 8px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+}
+
+.nav-pills .nav-link {
+    border-radius: 8px;
+    font-weight: 500;
+}
+
+.form-control {
+    border-radius: 8px;
+    border: 2px solid #e9ecef;
+    transition: border-color 0.3s ease;
+}
+
+.form-control:focus {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+
+.alert {
+    border-radius: 8px;
+    border: none;
+}
+
+.badge {
+    font-size: 0.8em;
+    font-weight: 500;
+}
+
+/* Loading indicator */
+.spinner-border {
+    width: 3rem;
+    height: 3rem;
+}
+
+/* File upload styling */
+.form-control[type="file"] {
+    padding: 0.5rem;
+}
+
+/* Table styling */
+.table td {
+    vertical-align: middle;
+}
+
+/* Preview image styling */
+.card-body img {
+    border-radius: 8px;
+}
+
+/* Image gallery styling */
+.page-image {
+    transition: transform 0.2s ease;
+    cursor: pointer;
+}
+
+.page-image:hover {
+    transform: scale(1.05);
+}
+
+.stat-item {
+    padding: 1rem;
+}
+
+.stat-item h4 {
+    margin: 0.5rem 0;
+    font-weight: 600;
+}
+
+/* Modal styling */
+.modal-lg {
+    max-width: 90vw;
+}
+
+#modalImage {
+    max-height: 70vh;
+    width: auto;
+}
+
+/* Page cards in gallery */
+.page-card {
+    transition: all 0.3s ease;
+}
+
+.page-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+}
+
+/* Loading states */
+.loading-placeholder {
+    background: linear-gradient(90deg, #f0f0f0 25%, transparent 37%, #f0f0f0 63%);
+    background-size: 400% 100%;
+    animation: loading 1.5s ease infinite;
+}
+
+@keyframes loading {
+    0% {
+        background-position: 100% 50%;
+    }
+    100% {
+        background-position: -100% 50%;
+    }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .nav-pills {
+        flex-direction: column;
+    }
+
+    .nav-pills .nav-item {
+        margin-bottom: 0.5rem;
+    }
+
+    .card-body {
+        padding: 1rem;
+    }
+
+    .stat-item {
+        padding: 0.5rem;
+    }
+
+    .modal-lg {
+        max-width: 95vw;
+    }
+
+    #modalImage {
+        max-height: 60vh;
+    }
+}

@@ -1,0 +1,1388 @@
+{% extends "base.html" %}
+
+{% block title %}PDF Processing Pipeline - Dashboard{% endblock %}
+
+{% block content %}
+<style>
+    .batch-carousel-modal .carousel-inner {
+        background-color: #343a40; /* Dark background for better image contrast */
+    }
+    .batch-carousel-modal .carousel-item {
+        height: 70vh; /* Adjust height */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .batch-carousel-modal .carousel-item img {
+        max-height: 100%;
+        max-width: 100%;
+        object-fit: contain;
+    }
+    .carousel-caption-custom {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: rgba(0, 0, 0, 0.5);
+        padding: 0.5rem;
+        color: white;
+        text-align: center;
+        font-size: 0.9rem;
+    }
+</style>
+
+<div class="container-fluid pipeline-shell">
+    <div class="row align-items-center mb-4">
+        <div class="col-lg-8">
+            <h2 class="mb-1">
+                <i class="fas fa-industry me-2 text-primary"></i>
+                PDF Processing Pipeline
+            </h2>
+            <p class="text-muted mb-0">Upload multiple PDFs and track their progress through each stage.</p>
+        </div>
+        <div class="col-lg-4 mt-3 mt-lg-0 text-lg-end">
+            <div class="d-flex d-lg-inline-flex gap-2 justify-content-lg-end">
+                <button class="btn btn-outline-secondary" onclick="clearCompleted()">
+                    <i class="fas fa-broom me-1"></i>
+                    Clear Completed
+                </button>
+                <button class="btn btn-primary" onclick="showUploadModal()">
+                    <i class="fas fa-plus me-1"></i>
+                    Add Documents
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="row row-cols-2 row-cols-md-4 g-3 mb-4" id="statusSummaryRow">
+        <div class="col">
+            <div class="status-card queue">
+                <div class="status-icon"><i class="fas fa-clock"></i></div>
+                <div class="status-body">
+                    <span class="status-count" id="queueCount">0</span>
+                    <span class="status-label">In Queue</span>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="status-card processing">
+                <div class="status-icon"><i class="fas fa-gear"></i></div>
+                <div class="status-body">
+                    <span class="status-count" id="activeCount">0</span>
+                    <span class="status-label">Processing</span>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="status-card completed">
+                <div class="status-icon"><i class="fas fa-circle-check"></i></div>
+                <div class="status-body">
+                    <span class="status-count" id="completedCount">0</span>
+                    <span class="status-label">Completed</span>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="status-card error">
+                <div class="status-icon"><i class="fas fa-triangle-exclamation"></i></div>
+                <div class="status-body">
+                    <span class="status-count" id="errorCount">0</span>
+                    <span class="status-label">Errors</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header border-0">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="fas fa-project-diagram me-2"></i>
+                    Processing Pipeline
+                </h5>
+                <small class="text-muted">Click a stage to explore documents and outputs.</small>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="pipeline-overview" id="pipelineOverview">
+                <div class="stage-track" role="group" aria-label="Processing stages">
+                    <button type="button" class="stage-node" data-stage-node data-stage="upload">
+                        <span class="stage-node-icon"><i class="fas fa-cloud-upload-alt"></i></span>
+                        <span class="stage-node-label">Upload</span>
+                        <span class="stage-node-count" id="stageCount-upload">0</span>
+                    </button>
+                    <div class="stage-connector" data-stage-connector="0" aria-hidden="true">
+                        <span class="stage-connector-bar"></span>
+                    </div>
+                    <button type="button" class="stage-node" data-stage-node data-stage="pdf_processing">
+                        <span class="stage-node-icon"><i class="fas fa-file-pdf"></i></span>
+                        <span class="stage-node-label">PDF Processing</span>
+                        <span class="stage-node-count" id="stageCount-pdf_processing">0</span>
+                    </button>
+                    <div class="stage-connector" data-stage-connector="1" aria-hidden="true">
+                        <span class="stage-connector-bar"></span>
+                    </div>
+                    <button type="button" class="stage-node" data-stage-node data-stage="splitting">
+                        <span class="stage-node-icon"><i class="fas fa-cut"></i></span>
+                        <span class="stage-node-label">Splitting</span>
+                        <span class="stage-node-count" id="stageCount-splitting">0</span>
+                    </button>
+                    <div class="stage-connector" data-stage-connector="2" aria-hidden="true">
+                        <span class="stage-connector-bar"></span>
+                    </div>
+                    <button type="button" class="stage-node" data-stage-node data-stage="completed">
+                        <span class="stage-node-icon"><i class="fas fa-circle-check"></i></span>
+                        <span class="stage-node-label">Completed</span>
+                        <span class="stage-node-count" id="stageCount-completed">0</span>
+                    </button>
+                </div>
+                <div class="stage-track-extra" role="group" aria-label="Exception stages">
+                    <button type="button" class="stage-node stage-node-error" data-stage-node data-stage="error">
+                        <span class="stage-node-icon"><i class="fas fa-triangle-exclamation"></i></span>
+                        <span class="stage-node-label">Errors</span>
+                        <span class="stage-node-count" id="stageCount-error">0</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 align-items-stretch stage-and-task">
+        <div class="col-lg-5">
+            <div class="card h-100" id="stageDetailCard">
+                <div class="card-header border-0">
+                    <h5 class="mb-1" id="stageDetailTitle">Stage Overview</h5>
+                    <small class="text-muted" id="stageDetailSubtitle">Select a stage above to explore its documents.</small>
+                </div>
+                <div class="card-body stage-detail-body">
+                    <div class="empty-state" id="stageTaskEmptyState">
+                        <i class="fas fa-diagram-project text-muted mb-2"></i>
+                        <p class="mb-0 text-muted">Pick a stage in the pipeline to view its tasks.</p>
+                    </div>
+                    <div id="stageTaskList" class="stage-task-list" role="list"></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-7">
+            <div class="card h-100" id="taskDetailCard">
+                <div class="card-header border-0 d-flex justify-content-between align-items-start">
+                    <div>
+                        <h5 class="mb-1" id="taskDetailTitle">Task Output</h5>
+                        <small class="text-muted" id="taskDetailSubtitle">Select a task to inspect progress, batches, and errors.</small>
+                    </div>
+                    <div id="taskDetailBadge"></div>
+                </div>
+                <div class="card-body" id="taskDetailBody">
+                    <div class="empty-state">
+                        <i class="fas fa-list-check text-muted mb-2"></i>
+                        <p class="mb-0 text-muted">Select a task in the stage panel to explore its pipeline output.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Upload Modal -->
+<div class="modal fade" id="uploadModal" tabindex="-1" aria-labelledby="uploadModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="uploadModalLabel">
+                    <i class="fas fa-cloud-upload-alt me-2"></i>
+                    Upload Documents
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="upload-area" id="uploadArea">
+                    <div class="text-center py-5">
+                        <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
+                        <h5>Drop PDF files here or click to browse</h5>
+                        <p class="text-muted">You can upload multiple PDF files at once</p>
+                        <input type="file" id="fileInput" multiple accept=".pdf" hidden>
+                        <button class="btn btn-outline-primary" onclick="document.getElementById('fileInput').click()">
+                            Browse Files
+                        </button>
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <h6>Batch Configuration</h6>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label" for="batchSize">Batch Size</label>
+                            <input type="number" class="form-control" id="batchSize" value="4" min="1" max="10">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="overlapPages">Overlap Pages</label>
+                            <input type="number" class="form-control" id="overlapPages" value="0" min="0" max="3">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4" id="fileListContainer" style="display: none;">
+                    <h6>Selected Files</h6>
+                    <div id="fileList" class="list-group"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="startProcessingBtn" onclick="startProcessing()" disabled>
+                    <i class="fas fa-play me-1"></i>
+                    Start Processing
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Batch Viewer Modal -->
+<div class="modal fade" id="batchCarouselModal" tabindex="-1" aria-labelledby="batchCarouselModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl batch-carousel-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="batchCarouselModalLabel">Batch Viewer</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div id="batchCarousel" class="carousel slide" data-bs-ride="carousel" data-bs-interval="false">
+                    <div class="carousel-indicators"></div>
+                    <div class="carousel-inner"></div>
+                    <button class="carousel-control-prev" type="button" data-bs-target="#batchCarousel" data-bs-slide="prev">
+                        <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+                        <span class="visually-hidden">Previous</span>
+                    </button>
+                    <button class="carousel-control-next" type="button" data-bs-target="#batchCarousel" data-bs-slide="next">
+                        <span class="carousel-control-next-icon" aria-hidden="true"></span>
+                        <span class="visually-hidden">Next</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Image Modal for inline batch pages -->
+<div class="modal fade" id="imageModal" tabindex="-1" aria-labelledby="imageModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="imageModalLabel">
+                    <i class="fas fa-expand-arrows-alt me-2"></i>
+                    <span id="modalPageTitle">Page Preview</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center">
+                <img id="modalImage" src="" class="img-fluid border rounded" alt="Page preview">
+            </div>
+            <div class="modal-footer justify-content-between">
+                <button type="button" class="btn btn-secondary" id="prevPageBtn" onclick="navigatePage(-1)">
+                    <i class="fas fa-chevron-left me-1"></i>Previous
+                </button>
+                <span class="text-muted" id="pageCounter">Page 1 of 1</span>
+                <button type="button" class="btn btn-secondary" id="nextPageBtn" onclick="navigatePage(1)">
+                    Next<i class="fas fa-chevron-right ms-1"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<script>
+const STAGES = [
+    { id: 'upload', label: 'Upload', description: 'Waiting to enter processing', statuses: ['upload'], icon: 'fas fa-cloud-upload-alt' },
+    { id: 'pdf_processing', label: 'PDF Processing', description: 'Extracting content and metadata', statuses: ['pdf_processing'], icon: 'fas fa-file-pdf' },
+    { id: 'splitting', label: 'Splitting', description: 'Generating document batches', statuses: ['splitting'], icon: 'fas fa-cut' },
+    { id: 'completed', label: 'Completed', description: 'Processing finished and ready', statuses: ['completed'], icon: 'fas fa-circle-check' }
+];
+
+const EXTRA_STAGES = [
+    { id: 'error', label: 'Errors', description: 'Tasks that need attention', statuses: ['error'], icon: 'fas fa-triangle-exclamation', isExtra: true }
+];
+
+const ALL_STAGES = [...STAGES, ...EXTRA_STAGES];
+const STATUS_TO_STAGE = {};
+STAGES.forEach(stage => {
+    stage.statuses.forEach(status => {
+        STATUS_TO_STAGE[status] = stage.id;
+    });
+});
+EXTRA_STAGES.forEach(stage => {
+    stage.statuses.forEach(status => {
+        STATUS_TO_STAGE[status] = stage.id;
+    });
+});
+
+const STAGE_INDEX = STAGES.reduce((acc, stage, index) => {
+    acc[stage.id] = index;
+    return acc;
+}, {});
+
+let tasks = {};
+let selectedStage = null;
+let selectedTaskId = null;
+let selectedFiles = [];
+let statusUpdateInterval;
+let batchCarouselModal = null;
+
+// Image modal state
+let currentBatchPages = [];
+let currentPageIndex = 0;
+
+document.addEventListener('DOMContentLoaded', () => {
+    bindStageNodes();
+    initializeDashboard();
+    setupFileUpload();
+    startStatusUpdates();
+    
+    // Initialize the Bootstrap Modal for the carousel
+    const modalElement = document.getElementById('batchCarouselModal');
+    if (modalElement && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+        try {
+            batchCarouselModal = new bootstrap.Modal(modalElement);
+        } catch (error) {
+            console.error('Failed to initialize batch carousel modal:', error);
+            batchCarouselModal = null;
+        }
+    } else {
+        console.warn('Bootstrap Modal not available or modal element not found');
+        batchCarouselModal = null;
+    }
+});
+
+function initializeDashboard() {
+    // Default to first stage for initial view
+    if (!selectedStage) {
+        selectedStage = STAGES[0].id;
+    }
+    loadTasks();
+}
+
+function bindStageNodes() {
+    document.querySelectorAll('[data-stage-node]').forEach(node => {
+        node.addEventListener('click', () => {
+            const stage = node.dataset.stage;
+            if (stage) {
+                selectStage(stage);
+            }
+        });
+    });
+}
+
+function selectStage(stageId) {
+    if (selectedStage === stageId) {
+        return;
+    }
+    selectedStage = stageId;
+    selectedTaskId = null;
+    updateStageNodes();
+    renderStageDetail();
+    renderTaskDetail();
+}
+
+function selectTask(taskId) {
+    if (!taskId || !tasks[taskId]) {
+        return;
+    }
+    selectedTaskId = taskId;
+    renderStageDetail();
+    renderTaskDetail();
+}
+
+function startStatusUpdates() {
+    if (statusUpdateInterval) {
+        clearInterval(statusUpdateInterval);
+    }
+    statusUpdateInterval = setInterval(loadTasks, 2000);
+}
+
+async function loadTasks() {
+    try {
+        const response = await fetch('/api/pipeline/tasks');
+        if (!response.ok) {
+            throw new Error('Failed to load tasks');
+        }
+
+        const newTasks = await response.json();
+        tasks = newTasks || {};
+
+        updateDashboard();
+    } catch (error) {
+        console.error('Error loading tasks:', error);
+    }
+}
+
+function updateDashboard() {
+    updateStatusCards();
+    updateStageNodes();
+    renderStageDetail();
+    renderTaskDetail();
+}
+
+function updateStatusCards() {
+    const taskArray = Object.values(tasks);
+
+    const queueCount = taskArray.filter(t => t.status === 'upload').length;
+    const processingCount = taskArray.filter(t => ['pdf_processing', 'splitting'].includes(t.status)).length;
+    const completedCount = taskArray.filter(t => t.status === 'completed').length;
+    const errorCount = taskArray.filter(t => t.status === 'error').length;
+
+    setTextContent('queueCount', queueCount);
+    setTextContent('activeCount', processingCount);
+    setTextContent('completedCount', completedCount);
+    setTextContent('errorCount', errorCount);
+}
+
+function updateStageNodes() {
+    const counts = {};
+    ALL_STAGES.forEach(stage => counts[stage.id] = 0);
+
+    const taskArray = Object.values(tasks);
+    taskArray.forEach(task => {
+        const stageId = getStageFromStatus(task.status);
+        if (counts[stageId] !== undefined) {
+            counts[stageId] += 1;
+        }
+    });
+
+    ALL_STAGES.forEach(stage => {
+        const node = document.querySelector(`[data-stage-node="${stage.id}"]`);
+        const countValue = counts[stage.id] || 0;
+        if (node) {
+            node.classList.toggle('is-selected', selectedStage === stage.id);
+            node.classList.toggle('has-items', countValue > 0);
+            node.setAttribute('aria-label', `${stage.label} stage, ${countValue} ${countValue === 1 ? 'document' : 'documents'}`);
+        }
+        setTextContent(`stageCount-${stage.id}`, countValue);
+    });
+
+    const highestIndex = getHighestStageIndex(taskArray);
+    document.querySelectorAll('[data-stage-connector]').forEach(connector => {
+        const connectorIndex = parseInt(connector.dataset.stageConnector, 10);
+        if (!Number.isNaN(connectorIndex)) {
+            connector.classList.toggle('is-active', highestIndex >= connectorIndex + 1);
+        }
+    });
+}
+
+function renderStageDetail() {
+    const stage = getStageDefinition(selectedStage);
+    const titleEl = document.getElementById('stageDetailTitle');
+    const subtitleEl = document.getElementById('stageDetailSubtitle');
+    const listEl = document.getElementById('stageTaskList');
+    const emptyStateEl = document.getElementById('stageTaskEmptyState');
+
+    if (!stage || !listEl) {
+        if (titleEl) titleEl.textContent = 'Stage Overview';
+        if (subtitleEl) subtitleEl.textContent = 'Select a stage above to explore its documents.';
+        if (listEl) listEl.innerHTML = '';
+        if (emptyStateEl) emptyStateEl.style.display = 'flex';
+        return;
+    }
+
+    if (titleEl) {
+        titleEl.textContent = `${stage.label} Stage`;
+    }
+
+    const stageTasks = Object.entries(tasks)
+        .filter(([, task]) => stage.statuses.includes(task.status))
+        .sort((a, b) => {
+            const createdA = a[1].created_at ? new Date(a[1].created_at).getTime() : 0;
+            const createdB = b[1].created_at ? new Date(b[1].created_at).getTime() : 0;
+            return createdB - createdA;
+        });
+
+    if (subtitleEl) {
+        const count = stageTasks.length;
+        const noun = count === 1 ? 'document' : 'documents';
+        subtitleEl.textContent = count > 0 ? `${count} ${noun} • ${stage.description}` : stage.description;
+    }
+
+    if (stageTasks.length === 0) {
+        if (emptyStateEl) {
+            emptyStateEl.style.display = 'flex';
+            emptyStateEl.innerHTML = `
+                <i class="fas fa-inbox text-muted mb-2"></i>
+                <p class="mb-0 text-muted">No documents in ${stage.label.toLowerCase()} right now.</p>
+            `;
+        }
+        if (listEl) {
+            listEl.innerHTML = '';
+        }
+        if (selectedTaskId && tasks[selectedTaskId]) {
+            const currentTask = tasks[selectedTaskId];
+            const currentStage = getStageFromStatus(currentTask.status);
+            if (currentStage !== selectedStage) {
+                selectedTaskId = null;
+                renderTaskDetail();
+            }
+        }
+        return;
+    }
+
+    if (emptyStateEl) {
+        emptyStateEl.style.display = 'none';
+    }
+
+    if (!selectedTaskId || !tasks[selectedTaskId] || !stage.statuses.includes(tasks[selectedTaskId].status)) {
+        selectedTaskId = stageTasks[0][0];
+    }
+
+    listEl.innerHTML = '';
+
+    stageTasks.forEach(([taskId, task]) => {
+        const taskElement = createStageTaskElement(taskId, task);
+        listEl.appendChild(taskElement);
+    });
+}
+
+function createStageTaskElement(taskId, task) {
+    const item = document.createElement('article');
+    item.className = 'stage-task';
+    item.setAttribute('role', 'listitem');
+    item.tabIndex = 0;
+
+    if (taskId === selectedTaskId) {
+        item.classList.add('is-active');
+    }
+
+    const fileName = getFileName(task);
+    const progress = Math.round(task.progress || 0);
+    const batchesLabel = `${task.completed_batches || 0} / ${task.total_batches || 0}`;
+
+    item.innerHTML = `
+        <div class="stage-task-header">
+            <div class="stage-task-title">
+                <i class="fas fa-file-pdf text-danger me-2"></i>
+                <span>${escapeHtml(fileName)}</span>
+            </div>
+            <span class="badge bg-${getStatusBadgeClass(task.status)}">${formatStatus(task.status)}</span>
+        </div>
+        <div class="stage-task-meta">
+            <span><strong>${progress}%</strong> complete</span>
+            <span>${batchesLabel} batches</span>
+        </div>
+        <div class="progress stage-task-progress" role="progressbar" aria-valuenow="${progress}" aria-valuemin="0" aria-valuemax="100">
+            <div class="progress-bar ${getProgressBarClass(task.status)}" style="width: ${progress}%;"></div>
+        </div>
+        <div class="stage-task-footer">
+            <small class="text-muted">Created ${formatDateTime(task.created_at)}</small>
+            ${task.status !== 'completed' && task.status !== 'error' ? `<button type="button" class="btn btn-sm btn-outline-danger" data-cancel-task="${taskId}"><i class="fas fa-stop me-1"></i>Cancel</button>` : ''}
+        </div>
+    `;
+
+    item.addEventListener('click', () => selectTask(taskId));
+    item.addEventListener('keypress', event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            selectTask(taskId);
+        }
+    });
+
+    const cancelButton = item.querySelector('[data-cancel-task]');
+    if (cancelButton) {
+        cancelButton.addEventListener('click', event => {
+            event.stopPropagation();
+            handleCancelTask(taskId);
+        });
+    }
+
+    return item;
+}
+
+async function handleCancelTask(taskId) {
+    if (!confirm('Are you sure you want to cancel this task?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/pipeline/tasks/${taskId}/cancel`, { method: 'POST' });
+        if (!response.ok) {
+            throw new Error('Failed to cancel task');
+        }
+        showAlert('Task cancelled successfully', 'success');
+        loadTasks();
+    } catch (error) {
+        console.error('Error cancelling task:', error);
+        showAlert('Unable to cancel the task. Please try again.', 'danger');
+    }
+}
+
+function renderTaskDetail() {
+    const bodyEl = document.getElementById('taskDetailBody');
+    const titleEl = document.getElementById('taskDetailTitle');
+    const subtitleEl = document.getElementById('taskDetailSubtitle');
+    const badgeEl = document.getElementById('taskDetailBadge');
+
+    if (!selectedTaskId || !tasks[selectedTaskId]) {
+        if (titleEl) titleEl.textContent = 'Task Output';
+        if (subtitleEl) subtitleEl.textContent = 'Select a task to inspect progress, batches, and errors.';
+        if (badgeEl) badgeEl.innerHTML = '';
+        if (bodyEl) {
+            bodyEl.innerHTML = `
+                <div class="empty-state">
+                    <i class="fas fa-list-check text-muted mb-2"></i>
+                    <p class="mb-0 text-muted">Select a task in the stage panel to explore its pipeline output.</p>
+                </div>
+            `;
+        }
+        return;
+    }
+
+    const task = tasks[selectedTaskId];
+    const fileName = getFileName(task);
+    const progress = Math.round(task.progress || 0);
+
+    if (titleEl) {
+        titleEl.innerHTML = `<i class="fas fa-file-pdf text-danger me-2"></i>${escapeHtml(fileName)}`;
+    }
+
+    if (subtitleEl) {
+        subtitleEl.textContent = 'Detailed pipeline output, configuration, and batch status.';
+    }
+
+    if (badgeEl) {
+        badgeEl.innerHTML = `<span class="badge bg-${getStatusBadgeClass(task.status)}">${formatStatus(task.status)}</span>`;
+    }
+
+    const timelineMarkup = renderTimeline(task);
+    const batchMarkup = renderBatches(task);
+    const errorMarkup = task.error_message ? `
+        <div class="alert alert-danger mt-4 mb-0">
+            <strong>Error:</strong> ${escapeHtml(task.error_message)}
+        </div>
+    ` : '';
+
+    const started = formatDateTime(task.started_at) || '—';
+    const completed = formatDateTime(task.completed_at) || '—';
+
+    if (bodyEl) {
+        bodyEl.innerHTML = `
+            <section class="task-summary mb-4">
+                <div class="task-summary-item">
+                    <span class="task-summary-label">Progress</span>
+                    <div class="progress" role="progressbar" aria-valuenow="${progress}" aria-valuemin="0" aria-valuemax="100">
+                        <div class="progress-bar ${getProgressBarClass(task.status)}" style="width: ${progress}%;"></div>
+                    </div>
+                    <span class="task-summary-value">${progress}%</span>
+                </div>
+                <div class="task-summary-item">
+                    <span class="task-summary-label">Batches</span>
+                    <span class="task-summary-value">${task.completed_batches || 0} / ${task.total_batches || 0}</span>
+                </div>
+                <div class="task-summary-item">
+                    <span class="task-summary-label">Created</span>
+                    <span class="task-summary-value">${formatDateTime(task.created_at)}</span>
+                </div>
+                <div class="task-summary-item">
+                    <span class="task-summary-label">Started</span>
+                    <span class="task-summary-value">${started}</span>
+                </div>
+                <div class="task-summary-item">
+                    <span class="task-summary-label">Completed</span>
+                    <span class="task-summary-value">${completed}</span>
+                </div>
+            </section>
+            ${timelineMarkup}
+            <section class="task-config mb-4">
+                <h6 class="section-title">Configuration</h6>
+                <div class="task-config-grid">
+                    <div>
+                        <span class="task-config-label">Batch size</span>
+                        <span class="task-config-value">${task.config?.batch_size ?? '—'}</span>
+                    </div>
+                    <div>
+                        <span class="task-config-label">Overlap</span>
+                        <span class="task-config-value">${task.config?.overlap_pages ?? 0} pages</span>
+                    </div>
+                    <div>
+                        <span class="task-config-label">Source</span>
+                        <span class="task-config-value">${escapeHtml(task.document_info?.source_type || 'upload')}</span>
+                    </div>
+                    <div>
+                        <span class="task-config-label">Total pages</span>
+                        <span class="task-config-value">${task.document_info?.total_pages ?? 'N/A'}</span>
+                    </div>
+                </div>
+            </section>
+            ${batchMarkup}
+            ${errorMarkup}
+        `;
+        bindBatchCardInteractions(task);
+    }
+}
+
+function renderTimeline(task) {
+    const currentStageId = getStageFromStatus(task.status);
+    const currentIndex = STAGE_INDEX[currentStageId] ?? -1;
+
+    const timelineItems = STAGES.map((stage, index) => {
+        let state = 'upcoming';
+        if (task.status === 'error') {
+            if (index < currentIndex) {
+                state = 'complete';
+            } else if (index === currentIndex) {
+                state = 'error';
+            } else {
+                state = 'blocked';
+            }
+        } else {
+            if (index < currentIndex) {
+                state = 'complete';
+            } else if (index === currentIndex) {
+                state = task.status === 'completed' ? 'complete' : 'active';
+            }
+        }
+
+        return `
+            <div class="timeline-item timeline-${state}">
+                <div class="timeline-icon"><i class="${stage.icon}"></i></div>
+                <div class="timeline-content">
+                    <span class="timeline-label">${stage.label}</span>
+                    <small class="timeline-text">${stage.description}</small>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    return `
+        <section class="task-timeline mb-4">
+            <h6 class="section-title">Pipeline Timeline</h6>
+            <div class="timeline-track">
+                ${timelineItems}
+            </div>
+        </section>
+    `;
+}
+
+function renderBatches(task) {
+    if (!task.batches || task.batches.length === 0) {
+        return `
+            <section class="task-batches">
+                <h6 class="section-title">Batch Detail</h6>
+                <p class="text-muted mb-0">Batch information appears once a document reaches the splitting stage.</p>
+            </section>
+        `;
+    }
+
+    const cardsMarkup = task.batches.map(batch => {
+        const badgeClass = getStatusBadgeClass(batch.status);
+        const processingTime = typeof batch.processing_time === 'number' ? `${batch.processing_time.toFixed(1)}s` : '—';
+        return `
+            <article class="batch-card border-${badgeClass === 'danger' ? 'danger' : badgeClass === 'success' ? 'success' : 'secondary'} batch-clickable"
+                     data-batch-card
+                     data-task-id="${escapeHtml(String(task.id))}"
+                     data-batch-id="${escapeHtml(String(batch.batch_id))}"
+                     data-batch-number="${escapeHtml(String(batch.batch_number))}"
+                     data-start-page="${escapeHtml(String(batch.start_page))}"
+                     data-end-page="${escapeHtml(String(batch.end_page))}"
+                     style="cursor: pointer;">
+                <div class="batch-header">
+                    <span class="batch-title">Batch ${batch.batch_number}</span>
+                    <span class="badge bg-${badgeClass}">${formatStatus(batch.status)}</span>
+                </div>
+                <div class="batch-body">
+                    <div>
+                        <span class="batch-label">Pages</span>
+                        <span class="batch-value">${batch.start_page}–${batch.end_page}</span>
+                    </div>
+                    <div>
+                        <span class="batch-label">Count</span>
+                        <span class="batch-value">${batch.page_count}</span>
+                    </div>
+                    <div>
+                        <span class="batch-label">Duration</span>
+                        <span class="batch-value">${processingTime}</span>
+                    </div>
+                </div>
+                <div class="batch-click-hint">
+                    <small class="text-muted">
+                        <i class="fas fa-mouse-pointer me-1"></i>
+                        Click to view pages
+                    </small>
+                </div>
+                ${batch.error_message ? `<div class="batch-error">${escapeHtml(batch.error_message)}</div>` : ''}
+                <div class="batch-pages" id="batch-pages-${batch.batch_id}" style="display: none;"></div>
+            </article>
+        `;
+    }).join('');
+
+    return `
+        <section class="task-batches">
+            <h6 class="section-title">Batch Detail</h6>
+            <div class="batch-grid">
+                ${cardsMarkup}
+            </div>
+        </section>
+    `;
+}
+
+function bindBatchCardInteractions(task) {
+    if (!task || !task.batches || task.batches.length === 0) {
+        return;
+    }
+
+    const bodyEl = document.getElementById('taskDetailBody');
+    if (!bodyEl) {
+        return;
+    }
+
+    bodyEl.querySelectorAll('[data-batch-card]').forEach(card => {
+        card.addEventListener('click', event => {
+            event.stopPropagation();
+            const taskId = card.dataset.taskId || task.id;
+            const batchId = card.dataset.batchId;
+            const batchNumber = parseInt(card.dataset.batchNumber, 10);
+            const startPage = parseInt(card.dataset.startPage, 10);
+            const endPage = parseInt(card.dataset.endPage, 10);
+
+            if (!batchId) {
+                return;
+            }
+
+            toggleBatchPages(taskId, batchId, batchNumber, startPage, endPage);
+        });
+    });
+}
+
+// Toggle inline display of batch pages
+async function toggleBatchPages(taskId, batchId, batchNumber, startPage, endPage) {
+    const pagesContainer = document.getElementById(`batch-pages-${batchId}`);
+    if (!pagesContainer) return;
+
+    // If pages are already loaded, just toggle visibility
+    if (pagesContainer.dataset.loaded === 'true') {
+        const isVisible = pagesContainer.style.display === 'block';
+        pagesContainer.style.display = isVisible ? 'none' : 'block';
+        return;
+    }
+
+    try {
+        // Fetch batch images
+        const response = await fetch(`/api/pipeline/tasks/${taskId}/batches/${batchId}/images`);
+        if (!response.ok) {
+            throw new Error(`Failed to load batch images: ${response.status} ${response.statusText}`);
+        }
+
+        const batchData = await response.json();
+
+        // Clear loading state and show container
+        pagesContainer.innerHTML = '';
+        pagesContainer.style.display = 'block';
+        pagesContainer.dataset.loaded = 'true';
+
+        if (!batchData.pages || batchData.pages.length === 0) {
+            pagesContainer.innerHTML = `
+                <div class="alert alert-warning mt-3 mb-0">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    No pages found in this batch.
+                </div>
+            `;
+            return;
+        }
+
+        // Create pages grid
+        const pagesGrid = document.createElement('div');
+        pagesGrid.className = 'batch-pages-grid';
+
+        // Add header
+        const header = document.createElement('div');
+        header.className = 'batch-pages-header';
+        header.innerHTML = `
+            <h6 class="mb-3">
+                <i class="fas fa-images me-2"></i>
+                Pages ${startPage}-${endPage} (${batchData.pages.length} pages)
+            </h6>
+        `;
+        pagesContainer.appendChild(header);
+
+        // Add pages
+        batchData.pages.forEach((page, index) => {
+            const pageCard = document.createElement('div');
+            pageCard.className = 'batch-page-card';
+            pageCard.innerHTML = `
+                <div class="batch-page-header">
+                    <small class="text-muted fw-bold">Page ${page.page_number}</small>
+                </div>
+                <div class="batch-page-body">
+                    <img src="data:image/png;base64,${page.image}"
+                         class="batch-page-image"
+                         alt="Page ${page.page_number}"
+                         onclick="openImageModal(${page.page_number}, '${page.image}')"
+                         style="cursor: pointer;">
+                </div>
+            `;
+            pagesGrid.appendChild(pageCard);
+        });
+
+        pagesContainer.appendChild(pagesGrid);
+
+    } catch (error) {
+        console.error('Error loading batch pages:', error);
+        pagesContainer.innerHTML = `
+            <div class="alert alert-danger mt-3 mb-0">
+                <i class="fas fa-exclamation-circle me-2"></i>
+                Error loading pages: ${escapeHtml(error.message)}
+            </div>
+        `;
+        pagesContainer.style.display = 'block';
+        pagesContainer.dataset.loaded = 'true';
+    }
+}
+
+// Open image modal for inline batch pages
+function openImageModal(pageNumber, imageData) {
+    const modalElement = document.getElementById('imageModal');
+    if (!modalElement) return;
+
+    const modalTitle = document.getElementById('modalPageTitle');
+    const modalImage = document.getElementById('modalImage');
+    const pageCounter = document.getElementById('pageCounter');
+    const prevBtn = document.getElementById('prevPageBtn');
+    const nextBtn = document.getElementById('nextPageBtn');
+
+    if (!modalTitle || !modalImage || !pageCounter) return;
+
+    modalTitle.textContent = `Page ${pageNumber}`;
+    modalImage.src = imageData;
+    modalImage.alt = `Page ${pageNumber}`;
+    pageCounter.textContent = `Page ${pageNumber} of ${currentBatchPages.length}`;
+
+    // Store current batch pages for navigation
+    currentBatchPages = [];
+    currentPageIndex = 0;
+
+    // For now, just show the single page without navigation
+    // In a full implementation, you'd load all pages and enable navigation
+    prevBtn.disabled = true;
+    nextBtn.disabled = true;
+
+    // Show modal
+    const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
+    modal.show();
+}
+
+// Navigate pages in modal (placeholder for future enhancement)
+function navigatePage(direction) {
+    // This would be implemented if we wanted full navigation between all pages
+    console.log('Navigate page:', direction);
+}
+
+function setupFileUpload() {
+    const uploadArea = document.getElementById('uploadArea');
+    const fileInput = document.getElementById('fileInput');
+
+    if (!uploadArea || !fileInput) {
+        return;
+    }
+
+    uploadArea.addEventListener('dragover', event => {
+        event.preventDefault();
+        uploadArea.classList.add('drag-over');
+    });
+
+    uploadArea.addEventListener('dragleave', event => {
+        event.preventDefault();
+        uploadArea.classList.remove('drag-over');
+    });
+
+    uploadArea.addEventListener('drop', event => {
+        event.preventDefault();
+        uploadArea.classList.remove('drag-over');
+
+        const files = Array.from(event.dataTransfer.files).filter(file =>
+            file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+        );
+
+        if (files.length > 0) {
+            handleFileSelection(files);
+        }
+    });
+
+    fileInput.addEventListener('change', event => {
+        const files = Array.from(event.target.files);
+        handleFileSelection(files);
+    });
+}
+
+function handleFileSelection(files) {
+    selectedFiles = [...selectedFiles, ...files];
+    updateFileList();
+
+    const fileListContainer = document.getElementById('fileListContainer');
+    const startBtn = document.getElementById('startProcessingBtn');
+
+    if (fileListContainer) {
+        fileListContainer.style.display = selectedFiles.length > 0 ? 'block' : 'none';
+    }
+
+    if (startBtn) {
+        startBtn.disabled = selectedFiles.length === 0;
+    }
+}
+
+function updateFileList() {
+    const fileList = document.getElementById('fileList');
+    if (!fileList) {
+        return;
+    }
+
+    fileList.innerHTML = '';
+
+    selectedFiles.forEach((file, index) => {
+        const fileItem = document.createElement('div');
+        fileItem.className = 'list-group-item d-flex justify-content-between align-items-center';
+        fileItem.innerHTML = `
+            <div>
+                <i class="fas fa-file-pdf text-danger me-2"></i>
+                <strong>${escapeHtml(file.name)}</strong>
+                <small class="text-muted ms-2">(${formatFileSize(file.size)})</small>
+            </div>
+            <button class="btn btn-sm btn-outline-danger" type="button" data-remove-index="${index}">
+                <i class="fas fa-times"></i>
+            </button>
+        `;
+
+        const removeButton = fileItem.querySelector(`[data-remove-index="${index}"]`);
+        if (removeButton) {
+            removeButton.addEventListener('click', () => removeFile(index));
+        }
+
+        fileList.appendChild(fileItem);
+    });
+}
+
+function removeFile(index) {
+    selectedFiles.splice(index, 1);
+    updateFileList();
+
+    const fileListContainer = document.getElementById('fileListContainer');
+    const startBtn = document.getElementById('startProcessingBtn');
+
+    if (fileListContainer) {
+        fileListContainer.style.display = selectedFiles.length > 0 ? 'block' : 'none';
+    }
+
+    if (startBtn) {
+        startBtn.disabled = selectedFiles.length === 0;
+    }
+}
+
+function showUploadModal() {
+    const modalElement = document.getElementById('uploadModal');
+    if (!modalElement) return;
+    const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
+    modal.show();
+}
+
+async function startProcessing() {
+    const batchSize = parseInt(document.getElementById('batchSize').value, 10);
+    const overlapPages = parseInt(document.getElementById('overlapPages').value, 10);
+    const startBtn = document.getElementById('startProcessingBtn');
+
+    if (startBtn) {
+        startBtn.disabled = true;
+        startBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Starting...';
+    }
+
+    try {
+        for (const file of selectedFiles) {
+            await submitFileForProcessing(file, batchSize, overlapPages);
+        }
+
+        selectedFiles = [];
+        updateFileList();
+        const fileInput = document.getElementById('fileInput');
+        if (fileInput) fileInput.value = '';
+        const fileListContainer = document.getElementById('fileListContainer');
+        if (fileListContainer) fileListContainer.style.display = 'none';
+
+        const modalElement = document.getElementById('uploadModal');
+        if (modalElement) {
+            const modal = bootstrap.Modal.getInstance(modalElement);
+            if (modal) modal.hide();
+        }
+
+        showAlert('Documents submitted to the pipeline.', 'success');
+        loadTasks();
+    } catch (error) {
+        console.error('Error starting processing:', error);
+        showAlert(`Error starting processing: ${error.message}`, 'danger');
+    } finally {
+        if (startBtn) {
+            startBtn.disabled = false;
+            startBtn.innerHTML = '<i class="fas fa-play me-1"></i>Start Processing';
+        }
+    }
+}
+
+async function submitFileForProcessing(file, batchSize, overlapPages) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('batch_size', batchSize);
+    formData.append('overlap_pages', overlapPages);
+
+    const response = await fetch('/api/pipeline/submit', {
+        method: 'POST',
+        body: formData
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to submit ${file.name}: ${response.statusText}`);
+    }
+
+    return response.json();
+}
+
+async function clearCompleted() {
+    if (!confirm('Clear all completed tasks?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/pipeline/clear-completed', { method: 'POST' });
+        if (!response.ok) {
+            throw new Error('Failed to clear completed tasks');
+        }
+        showAlert('Completed tasks cleared', 'success');
+        loadTasks();
+    } catch (error) {
+        console.error('Error clearing completed tasks:', error);
+        showAlert('Unable to clear completed tasks right now.', 'danger');
+    }
+}
+
+function getStageDefinition(stageId) {
+    return ALL_STAGES.find(stage => stage.id === stageId) || null;
+}
+
+function getStageFromStatus(status) {
+    return STATUS_TO_STAGE[status] || 'upload';
+}
+
+function getHighestStageIndex(taskArray) {
+    if (!taskArray || taskArray.length === 0) {
+        return -1;
+    }
+
+    return taskArray.reduce((highest, task) => {
+        const stageId = getStageFromStatus(task.status);
+        const index = STAGE_INDEX[stageId];
+        if (typeof index === 'number' && index > highest) {
+            return index;
+        }
+        return highest;
+    }, -1);
+}
+
+function setTextContent(elementId, value) {
+    const element = document.getElementById(elementId);
+    if (element) {
+        element.textContent = value;
+    }
+}
+
+function getFileName(task) {
+    const rawPath = task.document_info?.file_path || 'Document';
+    const segments = rawPath.split(/[\\/]/);
+    return segments[segments.length - 1] || rawPath;
+}
+
+function formatStatus(status) {
+    if (!status) return 'Unknown';
+    return status
+        .toString()
+        .split('_')
+        .map(segment => segment.charAt(0).toUpperCase() + segment.slice(1))
+        .join(' ');
+}
+
+function getStatusBadgeClass(status) {
+    const map = {
+        upload: 'info',
+        pdf_processing: 'warning',
+        splitting: 'primary',
+        completed: 'success',
+        error: 'danger',
+        processing: 'primary',
+        pending: 'secondary'
+    };
+    return map[status] || 'secondary';
+}
+
+function getProgressBarClass(status) {
+    const map = {
+        upload: 'bg-info',
+        pdf_processing: 'bg-warning',
+        splitting: 'bg-primary',
+        completed: 'bg-success',
+        error: 'bg-danger'
+    };
+    return map[status] || 'bg-secondary';
+}
+
+function formatDateTime(isoString) {
+    if (!isoString) return '—';
+    const date = new Date(isoString);
+    if (Number.isNaN(date.getTime())) {
+        return '—';
+    }
+    return date.toLocaleString();
+}
+
+function formatFileSize(bytes) {
+    if (!bytes) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
+}
+
+function escapeHtml(text) {
+    if (text === undefined || text === null) {
+        return '';
+    }
+    return text
+        .toString()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function showAlert(message, type = 'info') {
+    const container = document.querySelector('.pipeline-shell');
+    if (!container) return;
+
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    `;
+
+    container.insertBefore(alertDiv, container.firstChild);
+
+    setTimeout(() => {
+        alertDiv.classList.remove('show');
+        setTimeout(() => alertDiv.remove(), 150);
+    }, 5000);
+}
+
+window.addEventListener('beforeunload', () => {
+    if (statusUpdateInterval) {
+        clearInterval(statusUpdateInterval);
+    }
+});
+
+// --- NEW BATCH VIEWER LOGIC ---
+async function openBatchViewer(taskId, batchId, batchNumber, startPage, endPage) {
+    const modalElement = document.getElementById('batchCarouselModal');
+    if (!modalElement) {
+        console.error('Batch carousel modal element not found.');
+        return;
+    }
+
+    // Initialize modal if not already done
+    if (!batchCarouselModal) {
+        try {
+            batchCarouselModal = new bootstrap.Modal(modalElement);
+        } catch (error) {
+            console.error('Failed to initialize batch carousel modal:', error);
+            return;
+        }
+    }
+
+    const modalTitle = document.getElementById('batchCarouselModalLabel');
+    const carouselIndicators = document.querySelector('#batchCarousel .carousel-indicators');
+    const carouselInner = document.querySelector('#batchCarousel .carousel-inner');
+
+    if (!modalTitle || !carouselIndicators || !carouselInner) {
+        console.error('Required modal elements not found');
+        return;
+    }
+
+    // Set title and clear previous content
+    modalTitle.textContent = `Batch ${batchNumber} (Pages ${startPage}-${endPage})`;
+    carouselIndicators.innerHTML = '<div class="spinner-border text-light" role="status"><span class="visually-hidden">Loading...</span></div>';
+    carouselInner.innerHTML = '';
+
+    // Show the modal
+    try {
+        batchCarouselModal.show();
+    } catch (error) {
+        console.error('Failed to show modal:', error);
+        return;
+    }
+
+    try {
+        // Fetch batch images
+        const response = await fetch(`/api/pipeline/tasks/${taskId}/batches/${batchId}/images`);
+        if (!response.ok) {
+            throw new Error(`Failed to load batch images: ${response.status} ${response.statusText}`);
+        }
+        
+        const batchData = await response.json();
+        
+        // Clear loading state
+        carouselIndicators.innerHTML = '';
+        carouselInner.innerHTML = '';
+
+        if (!batchData.pages || batchData.pages.length === 0) {
+            carouselInner.innerHTML = '<div class="carousel-item active"><div class="d-flex justify-content-center align-items-center h-100"><p class="text-light">No pages found in this batch.</p></div></div>';
+            return;
+        }
+
+        // Populate carousel
+        batchData.pages.forEach((page, index) => {
+            // Create indicator
+            const indicator = document.createElement('button');
+            indicator.type = 'button';
+            indicator.setAttribute('data-bs-target', '#batchCarousel');
+            indicator.setAttribute('data-bs-slide-to', index.toString());
+            if (index === 0) {
+                indicator.classList.add('active');
+                indicator.setAttribute('aria-current', 'true');
+            }
+            indicator.setAttribute('aria-label', `Slide ${index + 1}`);
+            carouselIndicators.appendChild(indicator);
+
+            // Create carousel item
+            const item = document.createElement('div');
+            item.className = 'carousel-item' + (index === 0 ? ' active' : '');
+            item.innerHTML = `
+                <img src="data:image/png;base64,${page.image}" class="d-block" alt="Page ${page.page_number}">
+                <div class="carousel-caption-custom">
+                    Page ${page.page_number}
+                </div>
+            `;
+            carouselInner.appendChild(item);
+        });
+
+        // Initialize Bootstrap carousel
+        const carouselElement = document.getElementById('batchCarousel');
+        if (carouselElement && typeof bootstrap !== 'undefined' && bootstrap.Carousel) {
+            new bootstrap.Carousel(carouselElement, {
+                interval: false,
+                wrap: true
+            });
+        }
+
+    } catch (error) {
+        console.error('Error opening batch viewer:', error);
+        if (carouselInner) {
+            carouselInner.innerHTML = `<div class="carousel-item active"><div class="d-flex justify-content-center align-items-center h-100"><p class="text-danger">Error loading pages: ${error.message}</p></div></div>`;
+        }
+    }
+}
+
+</script>
+{% endblock %}
+
+{% block scripts %}
+<!-- Pipeline has embedded JavaScript, don't load script.js -->
+{% endblock %}

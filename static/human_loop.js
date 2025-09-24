@@ -157,13 +157,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const name = batchNameInput.value.trim() || `Batch ${batches.length + 1}`;
 
-        const usedPages = new Set(batches.flatMap(batch => batch.pages));
-        const overlapping = selectedPages.filter(page => usedPages.has(page));
-        if (overlapping.length > 0) {
-            showToast(`Pages already assigned to another batch: ${overlapping.join(', ')}`, 'danger');
-            return;
-        }
-
         batches.push({
             name,
             pages: selectedPages

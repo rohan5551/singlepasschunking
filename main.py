@@ -11,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse
 from dotenv import load_dotenv
+from PIL import Image, ImageDraw, ImageFont
 import logging
 
 from src.processors import PDFProcessor, ProcessingManager

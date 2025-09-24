@@ -2,7 +2,10 @@ import os
 import io
 import base64
 import tempfile
-from typing import Optional
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+from uuid import uuid4
 from fastapi import FastAPI, Request, Form, HTTPException, File, UploadFile
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -11,7 +14,7 @@ from dotenv import load_dotenv
 import logging
 
 from src.processors import PDFProcessor, ProcessingManager
-from src.models import PDFDocument, SplitConfiguration
+from src.models import PDFDocument, SplitConfiguration, PageBatch
 
 load_dotenv()
 
@@ -34,6 +37,19 @@ pdf_processor = PDFProcessor(
 # Initialize Processing Manager for pipeline
 processing_manager = ProcessingManager(max_workers=4)
 
+
+@dataclass
+class ManualSession:
+    session_id: str
+    document: PDFDocument
+    source_path: str
+    temp_file: Optional[str] = None
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    batches: List[Dict[str, Any]] = field(default_factory=list)
+
+
+manual_sessions: Dict[str, ManualSession] = {}
+
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     """Main page with upload interface"""
@@ -49,11 +65,14 @@ async def process_pdf(
     request: Request,
     file_path: Optional[str] = Form(None),
     s3_url: Optional[str] = Form(None),
+    process_mode: str = Form("auto"),
     file: Optional[UploadFile] = File(None)
 ):
     """Process PDF from local path, S3 URL, or uploaded file"""
     try:
         document = None
+        temp_uploaded_path = None
+        is_human_loop = process_mode == "human"
 
         if file and file.filename:
             # Handle uploaded file
@@ -67,8 +86,11 @@ async def process_pdf(
                 buffer.write(content)
 
             document = pdf_processor.load_from_local(temp_path)
-            # Clean up temp file
-            os.remove(temp_path)
+            if is_human_loop:
+                temp_uploaded_path = temp_path
+            else:
+                # Clean up temp file
+                os.remove(temp_path)
 
         elif s3_url:
             # Handle S3 URL
@@ -98,6 +120,23 @@ async def process_pdf(
                 "image": img_base64
             })
 
+        if is_human_loop:
+            session_id = uuid4().hex
+            source_path = file_path or s3_url or document.file_path
+            manual_sessions[session_id] = ManualSession(
+                session_id=session_id,
+                document=document,
+                source_path=source_path,
+                temp_file=temp_uploaded_path
+            )
+
+            return templates.TemplateResponse("manual_processing.html", {
+                "request": request,
+                "document_info": doc_info,
+                "page_images": pages_base64,
+                "session_id": session_id
+            })
+
         return templates.TemplateResponse("result.html", {
             "request": request,
             "document_info": doc_info,
@@ -124,6 +163,103 @@ async def process_pdf(
             "error": f"Processing error: {str(e)}",
             "success": False
         })
+
+
+@app.post("/api/manual/{session_id}/create-batches")
+async def create_manual_batches(session_id: str, request: Request):
+    """Create custom batches for a manual processing session."""
+
+    session = manual_sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Manual session not found or has expired")
+
+    payload = await request.json()
+    batches_payload = payload.get("batches", []) if isinstance(payload, dict) else []
+
+    if not isinstance(batches_payload, list) or not batches_payload:
+        raise HTTPException(status_code=400, detail="No batches provided")
+
+    document = session.document
+    page_lookup = {page.page_number: page for page in document.pages}
+
+    created_batches: List[Dict[str, Any]] = []
+    assigned_pages: set[int] = set()
+
+    for index, batch_data in enumerate(batches_payload, start=1):
+        if not isinstance(batch_data, dict):
+            raise HTTPException(status_code=400, detail="Invalid batch format")
+
+        raw_pages = batch_data.get("pages", [])
+        if not isinstance(raw_pages, list) or not raw_pages:
+            raise HTTPException(status_code=400, detail=f"Batch {index} must include at least one page")
+
+        if not all(isinstance(page, int) for page in raw_pages):
+            raise HTTPException(status_code=400, detail="Page numbers must be integers")
+
+        unique_pages = sorted(set(raw_pages))
+        for page_number in unique_pages:
+            if page_number < 1 or page_number > document.total_pages:
+                raise HTTPException(status_code=400, detail=f"Page {page_number} is out of range")
+            if page_number not in page_lookup:
+                raise HTTPException(status_code=400, detail=f"Page {page_number} is not available")
+            if page_number in assigned_pages:
+                raise HTTPException(status_code=400, detail=f"Page {page_number} has already been assigned")
+
+        batch_name = (batch_data.get("name") or f"Batch {index}").strip()
+        batch_pages = [page_lookup[p] for p in unique_pages]
+
+        source_basename = os.path.splitext(os.path.basename(session.source_path or "manual_document"))[0]
+        page_batch = PageBatch(
+            batch_id=f"{source_basename}_manual_{index}_{uuid4().hex[:8]}",
+            batch_number=index,
+            pages=batch_pages,
+            start_page=unique_pages[0],
+            end_page=unique_pages[-1],
+            total_pages=len(batch_pages),
+            document_id=session.source_path or document.file_path
+        )
+
+        assigned_pages.update(unique_pages)
+        created_batches.append({
+            "name": batch_name,
+            "page_numbers": unique_pages,
+            "page_batch": page_batch
+        })
+
+    session.batches = created_batches
+
+    if session.temp_file and os.path.exists(session.temp_file):
+        try:
+            os.remove(session.temp_file)
+        except OSError:
+            logger.warning(f"Unable to remove temporary file {session.temp_file}")
+
+    manual_sessions.pop(session_id, None)
+
+    total_assigned = len(assigned_pages)
+    unassigned_pages = max(document.total_pages - total_assigned, 0)
+
+    response_batches = [
+        {
+            "batch_id": batch_info["page_batch"].batch_id,
+            "name": batch_info["name"],
+            "page_numbers": batch_info["page_numbers"],
+            "page_count": len(batch_info["page_numbers"])
+        }
+        for batch_info in created_batches
+    ]
+
+    return JSONResponse(
+        content={
+            "success": True,
+            "session_id": session_id,
+            "total_batches": len(response_batches),
+            "total_pages": document.total_pages,
+            "unassigned_pages": unassigned_pages,
+            "batches": response_batches
+        }
+    )
+
 
 @app.get("/api/document-info/{source_type}")
 async def get_document_info_api(

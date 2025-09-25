@@ -35,6 +35,11 @@
             <div class="step-connector"></div>
             <div class="step-item" data-step="3">
                 <span class="step-number">3</span>
+                <span class="step-label">LLM Processing</span>
+            </div>
+            <div class="step-connector"></div>
+            <div class="step-item" data-step="4">
+                <span class="step-number">4</span>
                 <span class="step-label">Summary</span>
             </div>
         </div>
@@ -242,10 +247,74 @@
 
     <!-- Step 3 -->
     <div class="col-12 manual-step" data-step="3" style="display: none;">
+        <div class="alert alert-warning d-flex align-items-center" role="alert">
+            <i class="fas fa-robot fa-lg me-2"></i>
+            <div>
+                Provide custom instructions for Gemini 2.5 Pro or use the default template. Once started, batches will be processed sequentially and their progress will be shown below.
+            </div>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-lg-6">
+                <div class="card h-100">
+                    <div class="card-header bg-light">
+                        <h5 class="mb-0">
+                            <i class="fas fa-sliders-h me-2"></i>
+                            LLM Instructions
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="llmInstructionsInput" class="form-label">Instructions sent to Gemini 2.5 Pro</label>
+                            <textarea class="form-control" id="llmInstructionsInput" rows="18" placeholder="Enter custom instructions or keep the default template."></textarea>
+                            <div class="form-text">The context for the previous batch will be injected automatically for each request.</div>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-outline-secondary" id="useDefaultInstructionsBtn" type="button">
+                                <i class="fas fa-undo me-2"></i>
+                                Use Default Template
+                            </button>
+                            <button class="btn btn-primary ms-auto" id="startProcessingBtn" type="button">
+                                <i class="fas fa-rocket me-2"></i>
+                                Start LLM Processing
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <button class="btn btn-link mt-3" id="backToBatchingBtn" type="button">
+                    <i class="fas fa-arrow-left me-2"></i>
+                    Back to Batches
+                </button>
+            </div>
+
+            <div class="col-lg-6">
+                <div class="card h-100">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-tasks me-2"></i>
+                            Batch Processing Status
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3" id="processingStatusSummary">
+                            <div class="progress" role="progressbar" aria-label="Batch processing progress">
+                                <div class="progress-bar" id="processingProgressBar" style="width: 0%">0%</div>
+                            </div>
+                            <small class="text-muted d-block mt-2" id="processingStatusMessage">Batches are waiting to be processed.</small>
+                        </div>
+                        <div id="processingStatusContainer" class="processing-status-list"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Step 4 -->
+    <div class="col-12 manual-step" data-step="4" style="display: none;">
         <div class="alert alert-success d-flex align-items-center" role="alert">
             <i class="fas fa-check-circle fa-lg me-2"></i>
             <div>
-                Custom batches created successfully! Review the summary below or return to the dashboard to start another document.
+                LLM processing completed. Review the summary below or return to the dashboard to start another document.
             </div>
         </div>
 
@@ -257,7 +326,7 @@
                 </h5>
             </div>
             <div class="card-body" id="batchSummaryContainer">
-                <p class="text-muted mb-0">Batches will appear here once finalised.</p>
+                <p class="text-muted mb-0">Batches will appear here once processing is finished.</p>
             </div>
         </div>
 

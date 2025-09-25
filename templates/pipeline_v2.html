@@ -59,7 +59,9 @@
             </div>
         </div>
         <div class="col-md-3">
-            <div class="status-overview-card error">
+            <div class="status-overview-card error clickable" id="errorStatusCard" role="button" tabindex="0"
+                 onclick="handleErrorStatusClick()"
+                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();handleErrorStatusClick();}">
                 <div class="status-icon">
                     <i class="fas fa-exclamation-triangle"></i>
                 </div>
@@ -319,6 +321,25 @@ document.addEventListener('DOMContentLoaded', function() {
     startStatusUpdates();
 });
 
+function handleErrorStatusClick() {
+    const errorCountEl = document.getElementById('errorCount');
+    const errorCount = errorCountEl ? parseInt(errorCountEl.textContent, 10) || 0 : 0;
+
+    if (errorCount === 0) {
+        if (typeof showAlert === 'function') {
+            showAlert('No errors to review right now.', 'info');
+        }
+        return;
+    }
+
+    selectStage('error');
+
+    const detailsSection = document.getElementById('stageDetailsSection');
+    if (detailsSection) {
+        detailsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+}
+
 function initializeUploadModal() {
     const uploadDropZone = document.getElementById('uploadDropZone');
     const fileInput = document.getElementById('fileInput');
@@ -506,6 +527,13 @@ function updateStatusCards() {
     document.getElementById('processingCount').textContent = processingCount;
     document.getElementById('completedCount').textContent = completedCount;
     document.getElementById('errorCount').textContent = errorCount;
+
+    const errorCard = document.getElementById('errorStatusCard');
+    if (errorCard) {
+        errorCard.setAttribute('aria-disabled', errorCount === 0 ? 'true' : 'false');
+        errorCard.classList.toggle('has-count', errorCount > 0);
+        errorCard.classList.toggle('selected', selectedStage === 'error');
+    }
 }
 
 function updateStageFlow() {
@@ -804,6 +832,12 @@ function createSummaryContent(task) {
                     <strong>Error:</strong> ${escapeHtml(task.error_message)}
                 </div>
             ` : ''}
+            ${task.batches && task.batches.some(batch => Array.isArray(batch.warnings) && batch.warnings.length > 0) ? `
+                <div class="alert alert-warning mt-3">
+                    <i class="fas fa-info-circle me-2"></i>
+                    ${task.batches.filter(batch => Array.isArray(batch.warnings) && batch.warnings.length > 0).length} batch(es) returned warnings during LMM processing. Expand the batch details to review them.
+                </div>
+            ` : ''}
         </div>
     `;
 }
@@ -994,7 +1028,9 @@ function createBatchesContent(task) {
                                     onclick="selectBatch('${task.task_id}', '${batch.batch_id}', this)">
                                 <div class="d-flex justify-content-between align-items-center">
                                     <div>
-                                        <div class="fw-semibold">Batch ${batch.batch_number}</div>
+                                        <div class="fw-semibold">Batch ${batch.batch_number}
+                                            ${Array.isArray(batch.warnings) && batch.warnings.length > 0 ? '<span class="text-warning ms-2" title="This batch has warnings"><i class="fas fa-exclamation-circle"></i></span>' : ''}
+                                        </div>
                                         <small class="text-muted">Pages ${batch.start_page} - ${batch.end_page}</small>
                                     </div>
                                     <span class="badge bg-primary rounded-pill">${batch.page_count}</span>
@@ -1045,6 +1081,10 @@ function createChunkingContent(task) {
 
         const contextDetails = renderContextSnapshot(batch.context_snapshot);
 
+        const warningNotice = Array.isArray(batch.warnings) && batch.warnings.length > 0
+            ? `<div class="alert alert-warning"><strong>Heads up:</strong><br>${batch.warnings.map(msg => `<span class="d-block">${escapeHtml(msg)}</span>`).join('')}</div>`
+            : '';
+
         const lmmOutput = batch.lmm_output
             ? `<pre class="chunk-output">${escapeHtml(batch.lmm_output)}</pre>`
             : '<p class="text-muted mb-0">Output not available for this batch.</p>';
@@ -1064,6 +1104,7 @@ function createChunkingContent(task) {
                 </h2>
                 <div id="chunkCollapse-${batch.batch_id}" class="accordion-collapse collapse ${index === 0 ? 'show' : ''}" data-bs-parent="#${accordionId}">
                     <div class="accordion-body">
+                        ${warningNotice}
                         ${lmmOutput}
                         ${chunkSummary}
                         ${contextDetails}

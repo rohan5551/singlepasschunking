@@ -23,6 +23,7 @@ from src.models import (
     BatchStatus,
     ProcessingStage,
 )
+from src.prompts import build_manual_prompt, get_default_manual_prompt
 
 load_dotenv()
 
@@ -55,9 +56,158 @@ class ManualSession:
     created_at: datetime = field(default_factory=datetime.utcnow)
     batches: List[Dict[str, Any]] = field(default_factory=list)
     display_name: Optional[str] = None
+    processing_task: Optional[ProcessingTask] = None
+    processing_prompt: Optional[str] = None
 
 
 manual_sessions: Dict[str, ManualSession] = {}
+
+
+def _get_manual_session(session_id: str) -> ManualSession:
+    session = manual_sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Manual session not found or has expired")
+    return session
+
+
+def _build_manual_batches_payload(session: ManualSession) -> List[Dict[str, Any]]:
+    payload: List[Dict[str, Any]] = []
+    for batch_info in session.batches:
+        batch_obj: PageBatch = batch_info["page_batch"]
+        payload.append(
+            {
+                "batch_id": batch_obj.batch_id,
+                "name": batch_info.get("name", f"Batch {batch_obj.batch_number}"),
+                "page_numbers": batch_info.get("page_numbers", batch_obj.page_numbers),
+                "page_count": len(batch_info.get("page_numbers", batch_obj.page_numbers)),
+                "status": batch_obj.status.value,
+                "processed_at": batch_obj.processed_at.isoformat() if batch_obj.processed_at else None,
+                "error_message": batch_obj.error_message,
+            }
+        )
+    return payload
+
+
+def _calculate_unassigned_pages(session: ManualSession) -> int:
+    assigned = sum(len(batch_info.get("page_numbers", [])) for batch_info in session.batches)
+    return max(session.document.total_pages - assigned, 0)
+
+
+def _build_manual_session_response(session: ManualSession) -> Dict[str, Any]:
+    batches_payload = _build_manual_batches_payload(session)
+    task_payload = session.processing_task.to_dict() if session.processing_task else None
+
+    return {
+        "success": True,
+        "session_id": session.session_id,
+        "task_id": session.processing_task.task_id if session.processing_task else None,
+        "total_batches": len(batches_payload),
+        "total_pages": session.document.total_pages,
+        "unassigned_pages": _calculate_unassigned_pages(session),
+        "default_prompt": get_default_manual_prompt(),
+        "processing_prompt": session.processing_prompt,
+        "task": task_payload,
+        "batches": batches_payload,
+    }
+
+
+def _process_manual_batches_job(session_id: str, prompt_template: str) -> None:
+    session = manual_sessions.get(session_id)
+    if not session or not session.processing_task:
+        logger.error("Manual processing job received invalid session: %s", session_id)
+        return
+
+    task = session.processing_task
+    document = session.document
+
+    try:
+        if not session.batches:
+            task.status = ProcessingStage.ERROR
+            task.error_message = "No batches available for processing"
+            task.completed_at = datetime.utcnow()
+            return
+
+        processing_manager.context_manager.reset_context(document.file_path)
+        lmm_processor = processing_manager.lmm_processor
+
+        task.status = ProcessingStage.LMM_PROCESSING
+        task.started_at = datetime.utcnow()
+        task.completed_at = None
+        task.error_message = None
+        task.progress = 0.0
+
+        total_batches = len(session.batches)
+
+        for index, batch_info in enumerate(session.batches, start=1):
+            batch = batch_info["page_batch"]
+            try:
+                batch.status = BatchStatus.PROCESSING
+                batch.error_message = None
+                batch.processing_time = None
+                batch.processed_at = None
+
+                context_payload = processing_manager.context_manager.build_context_payload(
+                    document.file_path
+                )
+                prompt_for_batch = build_manual_prompt(prompt_template, context_payload)
+
+                lmm_result = lmm_processor.process_batch(
+                    batch,
+                    context=context_payload,
+                    prompt=prompt_for_batch,
+                    model=task.model or lmm_processor.DEFAULT_MODEL,
+                    temperature=task.temperature,
+                )
+
+                batch.lmm_output = lmm_result.get("raw_output")
+                batch.chunk_summary = lmm_result.get("chunks", [])
+                batch.context_snapshot = lmm_result.get("context", {})
+                batch.prompt_used = lmm_result.get("prompt_used")
+                batch.processing_time = lmm_result.get("processing_time")
+                batch.processed_at = datetime.utcnow()
+                batch.status = BatchStatus.COMPLETED
+
+                processing_manager.context_manager.update_context(
+                    document.file_path,
+                    last_chunks=lmm_result.get("last_chunks"),
+                    heading_hierarchy=lmm_result.get("heading_hierarchy"),
+                    continuation_metadata=lmm_result.get("continuation_metadata"),
+                )
+
+                task.progress = (index / total_batches) * 100.0
+            except Exception as batch_error:
+                batch.status = BatchStatus.ERROR
+                batch.error_message = str(batch_error)
+                logger.error(
+                    "Manual processing error for session %s batch %s: %s",
+                    session_id,
+                    batch.batch_id,
+                    batch_error,
+                )
+                task.status = ProcessingStage.ERROR
+                task.error_message = str(batch_error)
+                task.completed_at = datetime.utcnow()
+                return
+
+        task.status = ProcessingStage.COMPLETED
+        task.completed_at = datetime.utcnow()
+        task.context_state = processing_manager.context_manager.get_context(document.file_path)
+    except Exception as unexpected_error:
+        logger.exception(
+            "Unexpected error while processing manual session %s: %s",
+            session_id,
+            unexpected_error,
+        )
+        task.status = ProcessingStage.ERROR
+        task.error_message = str(unexpected_error)
+        task.completed_at = datetime.utcnow()
+    finally:
+        if session.temp_file and os.path.exists(session.temp_file):
+            try:
+                os.remove(session.temp_file)
+                session.temp_file = None
+            except OSError:
+                logger.warning("Unable to remove temporary file %s", session.temp_file)
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
@@ -183,10 +333,7 @@ async def process_pdf(
 async def create_manual_batches(session_id: str, request: Request):
     """Create custom batches for a manual processing session."""
 
-    session = manual_sessions.get(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Manual session not found or has expired")
-
+    session = _get_manual_session(session_id)
     payload = await request.json()
     batches_payload = payload.get("batches", []) if isinstance(payload, dict) else []
 
@@ -242,30 +389,29 @@ async def create_manual_batches(session_id: str, request: Request):
 
     session.batches = created_batches
 
-    completion_time = datetime.utcnow()
-
     manual_config = SplitConfiguration(
         batch_size=largest_batch_size or 1,
         overlap_pages=0
     )
 
-    for batch_info in created_batches:
-        batch_obj = batch_info["page_batch"]
-        batch_obj.status = BatchStatus.COMPLETED
-        batch_obj.processed_at = completion_time
+    default_prompt = get_default_manual_prompt()
 
     manual_task = ProcessingTask(
         task_id=f"manual_{uuid4().hex[:12]}",
         document=document,
         config=manual_config,
-        status=ProcessingStage.COMPLETED,
-        progress=100.0,
-        started_at=session.created_at,
-        completed_at=completion_time,
-        batches=[batch_info["page_batch"] for batch_info in created_batches]
+        status=ProcessingStage.SPLITTING,
+        progress=60.0,
+        started_at=None,
+        batches=[batch_info["page_batch"] for batch_info in created_batches],
+        prompt=default_prompt,
+        model=processing_manager.lmm_processor.DEFAULT_MODEL,
+        temperature=processing_manager.lmm_processor.temperature,
     )
 
-    manual_task.document.file_path = session.display_name or session.source_path or manual_task.document.file_path
+    manual_task.document.file_path = (
+        session.display_name or session.source_path or manual_task.document.file_path
+    )
     manual_task.document.source_type = "manual"
     metadata = dict(manual_task.document.metadata or {})
     metadata["processing_mode"] = "human_loop"
@@ -275,38 +421,68 @@ async def create_manual_batches(session_id: str, request: Request):
         metadata.setdefault("source_path", session.source_path)
     manual_task.document.metadata = metadata
 
-    with processing_manager._lock:
-        processing_manager.completed_tasks[manual_task.task_id] = manual_task
+    session.processing_task = manual_task
+    session.processing_prompt = default_prompt
 
-    if session.temp_file and os.path.exists(session.temp_file):
-        try:
-            os.remove(session.temp_file)
-        except OSError:
-            logger.warning(f"Unable to remove temporary file {session.temp_file}")
+    return JSONResponse(content=_build_manual_session_response(session))
 
-    manual_sessions.pop(session_id, None)
 
-    total_assigned = len(covered_pages)
-    unassigned_pages = max(document.total_pages - total_assigned, 0)
+@app.get("/api/manual/{session_id}/status")
+async def get_manual_session_status(session_id: str):
+    """Return the latest status for a manual processing session."""
 
-    response_batches = [
-        {
-            "batch_id": batch_info["page_batch"].batch_id,
-            "name": batch_info["name"],
-            "page_numbers": batch_info["page_numbers"],
-            "page_count": len(batch_info["page_numbers"])
-        }
-        for batch_info in created_batches
-    ]
+    session = _get_manual_session(session_id)
+    return JSONResponse(content=_build_manual_session_response(session))
+
+
+@app.post("/api/manual/{session_id}/process-batches")
+async def process_manual_batches(session_id: str, request: Request):
+    """Trigger LLM processing for the batches defined in a manual session."""
+
+    session = _get_manual_session(session_id)
+
+    if not session.batches:
+        raise HTTPException(status_code=400, detail="No batches defined for this session")
+
+    task = session.processing_task
+    if not task:
+        raise HTTPException(status_code=400, detail="Manual session is not ready for processing")
+
+    if task.status == ProcessingStage.LMM_PROCESSING:
+        raise HTTPException(status_code=400, detail="Processing already in progress")
+
+    payload = await request.json()
+    instructions = ""
+    if isinstance(payload, dict):
+        instructions = (payload.get("instructions") or "").strip()
+
+    prompt_template = instructions or get_default_manual_prompt()
+    session.processing_prompt = prompt_template
+    task.prompt = prompt_template
+    task.error_message = None
+    task.started_at = None
+    task.completed_at = None
+    task.progress = 0.0
+    task.status = ProcessingStage.LMM_PROCESSING
+
+    for batch_info in session.batches:
+        batch_obj = batch_info["page_batch"]
+        batch_obj.status = BatchStatus.PENDING
+        batch_obj.error_message = None
+        batch_obj.processing_time = None
+        batch_obj.processed_at = None
+        batch_obj.lmm_output = None
+        batch_obj.chunk_summary = []
+        batch_obj.context_snapshot = {}
+        batch_obj.prompt_used = None
+
+    processing_manager.executor.submit(_process_manual_batches_job, session_id, prompt_template)
 
     return JSONResponse(
         content={
             "success": True,
             "session_id": session_id,
-            "total_batches": len(response_batches),
-            "total_pages": document.total_pages,
-            "unassigned_pages": unassigned_pages,
-            "batches": response_batches
+            "task_id": task.task_id,
         }
     )
 

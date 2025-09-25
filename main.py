@@ -83,6 +83,7 @@ def _build_manual_batches_payload(session: ManualSession) -> List[Dict[str, Any]
                 "status": batch_obj.status.value,
                 "processed_at": batch_obj.processed_at.isoformat() if batch_obj.processed_at else None,
                 "error_message": batch_obj.error_message,
+                "warnings": batch_obj.warnings,
             }
         )
     return payload
@@ -164,6 +165,7 @@ def _process_manual_batches_job(session_id: str, prompt_template: str) -> None:
                 batch.context_snapshot = lmm_result.get("context", {})
                 batch.prompt_used = lmm_result.get("prompt_used")
                 batch.processing_time = lmm_result.get("processing_time")
+                batch.warnings = lmm_result.get("warnings", [])
                 batch.processed_at = datetime.utcnow()
                 batch.status = BatchStatus.COMPLETED
 

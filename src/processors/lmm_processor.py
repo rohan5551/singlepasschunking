@@ -71,15 +71,49 @@ class LMMProcessor:
 
         start_time = time.time()
 
+        warnings: List[str] = []
+
         if not self.api_key:
             logger.warning(
                 "OPENROUTER_API_KEY not set. Falling back to mock LMM output for batch %s.",
                 batch.batch_id,
             )
-            raw_output = self._build_mock_output(batch, prompt_to_use, context)
+            fallback_reason = (
+                "OpenRouter API key not configured. Returned mock output instead of "
+                "calling the live service."
+            )
+            warnings.append(fallback_reason)
+            raw_output = self._build_mock_output(
+                batch,
+                prompt_to_use,
+                context,
+                reason=fallback_reason,
+            )
         else:
-            response_json = self._send_request(payload)
-            raw_output = self._extract_output(response_json)
+            try:
+                response_json = self._send_request(payload)
+                raw_output = self._extract_output(response_json)
+            except RuntimeError as api_error:
+                if self._is_authentication_error(api_error):
+                    fallback_reason = (
+                        "OpenRouter authentication failed. Verify your OPENROUTER_API_KEY "
+                        "and account status. Returning mock output so processing can "
+                        "continue."
+                    )
+                    logger.warning(
+                        "Authentication error when calling OpenRouter for batch %s: %s",
+                        batch.batch_id,
+                        api_error,
+                    )
+                    warnings.append(fallback_reason)
+                    raw_output = self._build_mock_output(
+                        batch,
+                        prompt_to_use,
+                        context,
+                        reason=fallback_reason,
+                    )
+                else:
+                    raise
 
         processing_time = time.time() - start_time
 
@@ -105,6 +139,7 @@ class LMMProcessor:
             "prompt_used": prompt_to_use,
             "model": model_to_use,
             "processing_time": processing_time,
+            "warnings": warnings,
         }
 
     # ------------------------------------------------------------------
@@ -231,6 +266,10 @@ class LMMProcessor:
     # ------------------------------------------------------------------
     # Network helpers
     # ------------------------------------------------------------------
+    def _is_authentication_error(self, error: Exception) -> bool:
+        message = str(error).lower()
+        return any(keyword in message for keyword in ["401", "403", "unauthorized", "forbidden", "authentication"])
+
     def _send_request(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -238,12 +277,15 @@ class LMMProcessor:
         }
 
         for attempt in range(1, self.max_retries + 1):
-            response = requests.post(
-                self.base_url,
-                headers=headers,
-                json=payload,
-                timeout=self.timeout,
-            )
+            try:
+                response = requests.post(
+                    self.base_url,
+                    headers=headers,
+                    json=payload,
+                    timeout=self.timeout,
+                )
+            except requests.RequestException as exc:
+                raise RuntimeError(f"Failed to reach OpenRouter API: {exc}") from exc
 
             if response.status_code == 429:
                 wait_time = min(2 ** attempt, 10)
@@ -257,8 +299,13 @@ class LMMProcessor:
                 continue
 
             if response.status_code >= 400:
+                error_text = response.text.strip()
+                if response.status_code in (401, 403):
+                    raise RuntimeError(
+                        f"OpenRouter API authentication error {response.status_code}: {error_text or 'Authentication failed'}"
+                    )
                 raise RuntimeError(
-                    f"OpenRouter API error {response.status_code}: {response.text}"
+                    f"OpenRouter API error {response.status_code}: {error_text or 'Unknown error'}"
                 )
 
             return response.json()
@@ -351,12 +398,20 @@ class LMMProcessor:
     # Mock helpers
     # ------------------------------------------------------------------
     def _build_mock_output(
-        self, batch: PageBatch, prompt: str, context: Dict[str, Any]
+        self,
+        batch: PageBatch,
+        prompt: str,
+        context: Dict[str, Any],
+        *,
+        reason: Optional[str] = None,
     ) -> str:
         parts = [
             f"# Mock Chunking Output for Batch {batch.batch_number}",
             f"Prompt Summary: {prompt[:120]}{'...' if len(prompt) > 120 else ''}",
         ]
+
+        if reason:
+            parts.append(f"⚠️ {reason}")
 
         if context.get("heading_hierarchy"):
             parts.append("## Estimated Heading Context")

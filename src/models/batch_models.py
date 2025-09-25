@@ -40,6 +40,7 @@ class PageBatch:
     chunk_summary: List[str] = field(default_factory=list)
     context_snapshot: Dict[str, Any] = field(default_factory=dict)
     prompt_used: Optional[str] = None
+    warnings: List[str] = field(default_factory=list)
 
     def __post_init__(self):
         if not self.batch_id:
@@ -71,7 +72,8 @@ class PageBatch:
             "lmm_output": self.lmm_output,
             "chunk_summary": self.chunk_summary,
             "context_snapshot": self.context_snapshot,
-            "prompt_used": self.prompt_used
+            "prompt_used": self.prompt_used,
+            "warnings": self.warnings,
         }
 
 @dataclass

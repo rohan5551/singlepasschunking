@@ -272,6 +272,7 @@ class ProcessingManager:
                         batch.context_snapshot = lmm_result.get("context", {})
                         batch.prompt_used = lmm_result.get("prompt_used")
                         batch.processing_time = lmm_result.get("processing_time")
+                        batch.warnings = lmm_result.get("warnings", [])
                         batch.processed_at = datetime.now()
                         batch.status = BatchStatus.COMPLETED
 

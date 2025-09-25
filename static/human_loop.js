@@ -18,11 +18,23 @@ document.addEventListener('DOMContentLoaded', () => {
     const selectedCounter = document.getElementById('selectedPagesCounter');
     const batchListContainer = document.getElementById('batchList');
     const batchSummaryContainer = document.getElementById('batchSummaryContainer');
+    const instructionsInput = document.getElementById('llmInstructionsInput');
+    const defaultInstructionsBtn = document.getElementById('useDefaultInstructionsBtn');
+    const startProcessingBtn = document.getElementById('startProcessingBtn');
+    const backToBatchingBtn = document.getElementById('backToBatchingBtn');
+    const processingStatusContainer = document.getElementById('processingStatusContainer');
+    const processingProgressBar = document.getElementById('processingProgressBar');
+    const processingStatusMessage = document.getElementById('processingStatusMessage');
 
     const checkboxes = Array.from(container.querySelectorAll('.page-checkbox'));
 
     let currentStep = 1;
     let batches = [];
+    let manualTask = null;
+    let manualBatches = [];
+    let manualDefaultPrompt = '';
+    let processingPoller = null;
+    let instructionsDirty = false;
 
     function setStep(stepNumber) {
         currentStep = stepNumber;
@@ -122,8 +134,187 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => alert.remove(), 3000);
     }
 
+    function stopProcessingPoller() {
+        if (processingPoller) {
+            clearInterval(processingPoller);
+            processingPoller = null;
+        }
+    }
+
+    function startProcessingPoller() {
+        stopProcessingPoller();
+        fetchProcessingStatus({ silent: true });
+        processingPoller = setInterval(() => fetchProcessingStatus({ silent: true }), 2000);
+    }
+
+    function getStatusDetails(status) {
+        switch ((status || '').toLowerCase()) {
+            case 'completed':
+                return { label: 'Completed', badge: 'bg-success' };
+            case 'processing':
+            case 'lmm_processing':
+                return { label: 'Processing', badge: 'bg-info text-dark' };
+            case 'splitting':
+                return { label: 'Splitting', badge: 'bg-secondary' };
+            case 'upload':
+            case 'pdf_processing':
+                return { label: 'Preparing', badge: 'bg-secondary' };
+            case 'chunking':
+                return { label: 'Chunking', badge: 'bg-info text-dark' };
+            case 'error':
+                return { label: 'Error', badge: 'bg-danger' };
+            default:
+                return { label: 'Pending', badge: 'bg-secondary' };
+        }
+    }
+
+    function formatStatusBadge(status) {
+        const details = getStatusDetails(status);
+        return `<span class="badge ${details.badge}">${details.label}</span>`;
+    }
+
+    function renderProcessingStatus(batchesData, taskData) {
+        if (!processingStatusContainer) {
+            return;
+        }
+
+        const items = Array.isArray(batchesData) ? batchesData : [];
+        processingStatusContainer.innerHTML = '';
+
+        if (items.length === 0) {
+            const placeholder = document.createElement('p');
+            placeholder.className = 'text-muted mb-0';
+            placeholder.textContent = 'No batches available. Create batches to begin.';
+            processingStatusContainer.appendChild(placeholder);
+        } else {
+            items.forEach((batch) => {
+                const details = getStatusDetails(batch.status);
+                const item = document.createElement('div');
+                item.className = 'processing-status-item border rounded p-3 mb-2';
+                const pages = Array.isArray(batch.page_numbers) ? batch.page_numbers.join(', ') : '—';
+                item.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>${batch.name}</strong>
+                            <div class="text-muted small">Pages: ${pages}</div>
+                        </div>
+                        <span class="badge ${details.badge}">${details.label}</span>
+                    </div>
+                `;
+                if (batch.error_message) {
+                    const errorAlert = document.createElement('div');
+                    errorAlert.className = 'alert alert-danger mt-3 mb-0';
+                    errorAlert.textContent = batch.error_message;
+                    item.appendChild(errorAlert);
+                }
+                processingStatusContainer.appendChild(item);
+            });
+        }
+
+        if (processingProgressBar) {
+            const progressValue = Math.round(taskData?.progress ?? 0);
+            processingProgressBar.style.width = `${progressValue}%`;
+            processingProgressBar.textContent = `${progressValue}%`;
+            processingProgressBar.setAttribute('aria-valuenow', `${progressValue}`);
+        }
+
+        if (processingStatusMessage) {
+            const status = taskData?.status;
+            if (status === 'lmm_processing') {
+                const completed = taskData?.completed_batches ?? items.filter(item => item.status === 'completed').length;
+                processingStatusMessage.textContent = `Processing batch ${Math.min(completed + 1, items.length)} of ${items.length}...`;
+            } else if (status === 'completed') {
+                processingStatusMessage.textContent = 'All batches processed successfully.';
+            } else if (status === 'error') {
+                processingStatusMessage.textContent = taskData?.error_message || 'Processing encountered an error.';
+            } else {
+                processingStatusMessage.textContent = 'Batches are waiting to be processed.';
+            }
+        }
+    }
+
+    function updateManualSessionState(data, { initialisePrompt = false } = {}) {
+        manualTask = data?.task || null;
+        manualBatches = Array.isArray(data?.batches) ? data.batches : [];
+
+        if (data?.default_prompt) {
+            manualDefaultPrompt = data.default_prompt;
+        }
+
+        if (instructionsInput) {
+            const promptTemplate = data?.processing_prompt || manualDefaultPrompt || '';
+            if (initialisePrompt || !instructionsDirty) {
+                instructionsInput.value = promptTemplate;
+                instructionsDirty = false;
+            }
+        }
+
+        renderProcessingStatus(manualBatches, manualTask);
+
+        if (startProcessingBtn) {
+            if (manualTask?.status === 'lmm_processing') {
+                startProcessingBtn.disabled = true;
+                startProcessingBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Processing...';
+            } else {
+                startProcessingBtn.disabled = false;
+                startProcessingBtn.innerHTML = '<i class="fas fa-rocket me-2"></i>Start LLM Processing';
+            }
+        }
+    }
+
+    async function fetchProcessingStatus({ silent = false } = {}) {
+        if (!sessionId) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/manual/${sessionId}/status`);
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({}));
+                throw new Error(error.detail || 'Failed to fetch processing status');
+            }
+
+            const data = await response.json();
+            updateManualSessionState(data);
+
+            if (manualTask?.status === 'completed') {
+                stopProcessingPoller();
+                renderBatchSummary(data);
+                setStep(4);
+            } else if (manualTask?.status === 'error') {
+                stopProcessingPoller();
+                if (!silent) {
+                    showToast(manualTask.error_message || 'LLM processing failed.', 'danger');
+                }
+            }
+        } catch (error) {
+            if (silent) {
+                console.error(error);
+            } else {
+                showToast(error.message, 'danger');
+            }
+        }
+    }
+
     proceedBtn?.addEventListener('click', () => setStep(2));
     backBtn?.addEventListener('click', () => setStep(1));
+    backToBatchingBtn?.addEventListener('click', () => {
+        stopProcessingPoller();
+        setStep(2);
+    });
+
+    instructionsInput?.addEventListener('input', () => {
+        instructionsDirty = true;
+    });
+
+    defaultInstructionsBtn?.addEventListener('click', (event) => {
+        event.preventDefault();
+        if (!instructionsInput) {
+            return;
+        }
+        instructionsInput.value = manualDefaultPrompt || '';
+        instructionsDirty = false;
+    });
 
     checkboxes.forEach(cb => {
         cb.addEventListener('change', updateSelectionView);
@@ -192,7 +383,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const data = await response.json();
-            renderBatchSummary(data);
+            updateManualSessionState(data, { initialisePrompt: true });
             setStep(3);
         } catch (error) {
             showToast(error.message, 'danger');
@@ -201,31 +392,82 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    startProcessingBtn?.addEventListener('click', async (event) => {
+        event.preventDefault();
+        if (!sessionId || !instructionsInput) {
+            showToast('Session is not available. Please restart the process.', 'danger');
+            return;
+        }
+
+        startProcessingBtn.disabled = true;
+        startProcessingBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Starting...';
+
+        try {
+            const response = await fetch(`/api/manual/${sessionId}/process-batches`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ instructions: instructionsInput.value })
+            });
+
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({}));
+                throw new Error(error.detail || 'Failed to start LLM processing');
+            }
+
+            instructionsDirty = false;
+            startProcessingBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Processing...';
+            startProcessingPoller();
+        } catch (error) {
+            showToast(error.message, 'danger');
+            startProcessingBtn.disabled = false;
+            startProcessingBtn.innerHTML = '<i class="fas fa-rocket me-2"></i>Start LLM Processing';
+        }
+    });
+
     function renderBatchSummary(data) {
         batchSummaryContainer.innerHTML = '';
 
         const meta = document.createElement('div');
         meta.className = 'mb-3';
+        const batchesList = Array.isArray(data.batches) ? data.batches : [];
+        const totalBatches = data.total_batches ?? batchesList.length;
+        const completedBatches = data.task?.completed_batches ?? batchesList.filter(batch => batch.status === 'completed').length;
+        const summaryStatus = data.task?.status || (completedBatches === totalBatches && totalBatches > 0 ? 'completed' : 'pending');
+        const processingTime = data.task?.processing_time;
+        const formattedTime = typeof processingTime === 'number' ? `${processingTime.toFixed(1)}s` : '—';
+
         meta.innerHTML = `
-            <div class="row text-center">
-                <div class="col-md-4">
+            <div class="row text-center g-3">
+                <div class="col-md-3">
                     <div class="p-3 border rounded">
-                        <h5 class="mb-1">${data.total_batches}</h5>
-                        <small class="text-muted">Batches</small>
+                        <h5 class="mb-1">${totalBatches}</h5>
+                        <small class="text-muted">Total Batches</small>
                     </div>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <div class="p-3 border rounded">
-                        <h5 class="mb-1">${data.total_pages}</h5>
+                        <h5 class="mb-1">${completedBatches}</h5>
+                        <small class="text-muted">Completed Batches</small>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="p-3 border rounded">
+                        <h5 class="mb-1">${data.total_pages ?? '—'}</h5>
                         <small class="text-muted">Total Pages</small>
                     </div>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <div class="p-3 border rounded">
-                        <h5 class="mb-1">${data.unassigned_pages}</h5>
-                        <small class="text-muted">Unassigned Pages</small>
+                        <h5 class="mb-1">${formattedTime}</h5>
+                        <small class="text-muted">Processing Time</small>
                     </div>
                 </div>
+            </div>
+            <div class="text-center mt-3">
+                ${formatStatusBadge(summaryStatus)}
+                <small class="d-block text-muted mt-2">Task Status</small>
             </div>
         `;
         batchSummaryContainer.appendChild(meta);
@@ -236,16 +478,21 @@ document.addEventListener('DOMContentLoaded', () => {
             <thead class="table-light">
                 <tr>
                     <th>Batch</th>
+                    <th>Status</th>
                     <th>Pages</th>
-                    <th>Range</th>
+                    <th>Processed</th>
                 </tr>
             </thead>
             <tbody>
-                ${data.batches.map(batch => `
+                ${batchesList.map(batch => `
                     <tr>
                         <td>${batch.name}</td>
-                        <td><span class="badge bg-primary">${batch.page_count} page${batch.page_count > 1 ? 's' : ''}</span></td>
-                        <td>${batch.page_numbers.join(', ')}</td>
+                        <td>${formatStatusBadge(batch.status)}</td>
+                        <td>
+                            <span class="badge bg-primary">${batch.page_count} page${batch.page_count > 1 ? 's' : ''}</span><br>
+                            <small class="text-muted">${Array.isArray(batch.page_numbers) ? batch.page_numbers.join(', ') : '—'}</small>
+                        </td>
+                        <td>${batch.processed_at ? new Date(batch.processed_at).toLocaleString() : '—'}</td>
                     </tr>
                 `).join('')}
             </tbody>

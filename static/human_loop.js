@@ -36,6 +36,18 @@ document.addEventListener('DOMContentLoaded', () => {
     let processingPoller = null;
     let instructionsDirty = false;
 
+    function escapeHtml(value) {
+        if (typeof value !== 'string') {
+            value = value?.toString() ?? '';
+        }
+        return value
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     function setStep(stepNumber) {
         currentStep = stepNumber;
         steps.forEach(step => {
@@ -206,6 +218,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     errorAlert.className = 'alert alert-danger mt-3 mb-0';
                     errorAlert.textContent = batch.error_message;
                     item.appendChild(errorAlert);
+                }
+                if (Array.isArray(batch.warnings) && batch.warnings.length > 0) {
+                    const warningAlert = document.createElement('div');
+                    warningAlert.className = 'alert alert-warning mt-3 mb-0';
+                    warningAlert.innerHTML = `
+                        <strong>Heads up:</strong><br>
+                        ${batch.warnings.map(msg => `<span class="d-block">${escapeHtml(msg)}</span>`).join('')}
+                    `;
+                    item.appendChild(warningAlert);
                 }
                 processingStatusContainer.appendChild(item);
             });
@@ -486,7 +507,10 @@ document.addEventListener('DOMContentLoaded', () => {
             <tbody>
                 ${batchesList.map(batch => `
                     <tr>
-                        <td>${batch.name}</td>
+                        <td>
+                            ${escapeHtml(batch.name)}
+                            ${Array.isArray(batch.warnings) && batch.warnings.length > 0 ? '<span class="badge bg-warning text-dark ms-2">Warning</span>' : ''}
+                        </td>
                         <td>${formatStatusBadge(batch.status)}</td>
                         <td>
                             <span class="badge bg-primary">${batch.page_count} page${batch.page_count > 1 ? 's' : ''}</span><br>

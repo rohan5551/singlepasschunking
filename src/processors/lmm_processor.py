@@ -32,7 +32,12 @@ class LMMProcessor:
         timeout: int = 60,
         default_prompt: Optional[str] = None,
     ) -> None:
-        self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
+        # Read and normalize the API key once during initialization. Some
+        # execution paths (like background threads started before
+        # ``load_dotenv`` runs) may not have the environment variable loaded
+        # yet, so we store the explicit value if provided and fall back to
+        # resolving it dynamically during request execution.
+        self.api_key = (api_key or os.getenv("OPENROUTER_API_KEY") or "").strip()
         self.base_url = base_url
         self.temperature = temperature
         self.max_retries = max_retries
@@ -73,7 +78,9 @@ class LMMProcessor:
 
         warnings: List[str] = []
 
-        if not self.api_key:
+        api_key = self._resolve_api_key()
+
+        if not api_key:
             logger.warning(
                 "OPENROUTER_API_KEY not set. Falling back to mock LMM output for batch %s.",
                 batch.batch_id,
@@ -91,7 +98,7 @@ class LMMProcessor:
             )
         else:
             try:
-                response_json = self._send_request(payload)
+                response_json = self._send_request(payload, api_key=api_key)
                 raw_output = self._extract_output(response_json)
             except RuntimeError as api_error:
                 if self._is_authentication_error(api_error):
@@ -270,9 +277,23 @@ class LMMProcessor:
         message = str(error).lower()
         return any(keyword in message for keyword in ["401", "403", "unauthorized", "forbidden", "authentication"])
 
-    def _send_request(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def _resolve_api_key(self) -> Optional[str]:
+        """Return a normalized API key, refreshing from the environment."""
+
+        if self.api_key:
+            return self.api_key
+
+        env_value = os.getenv("OPENROUTER_API_KEY")
+        if env_value:
+            self.api_key = env_value.strip()
+            if self.api_key:
+                return self.api_key
+
+        return None
+
+    def _send_request(self, payload: Dict[str, Any], *, api_key: str) -> Dict[str, Any]:
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
 

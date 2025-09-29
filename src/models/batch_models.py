@@ -18,6 +18,7 @@ class ProcessingStage(Enum):
     SPLITTING = "splitting"
     LMM_PROCESSING = "lmm_processing"
     CHUNKING = "chunking"
+    DB_WRITING = "db_writing"
     COMPLETED = "completed"
     ERROR = "error"
 

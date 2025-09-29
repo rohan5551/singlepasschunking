@@ -13,6 +13,8 @@ from typing import Any, Dict, List, Optional
 import requests
 
 from ..models.batch_models import PageBatch
+from ..models.chunk_schema import ChunkOutput, BatchProcessingResult, parse_structured_llm_output
+from ..prompts.manual import DEFAULT_MANUAL_PROMPT_TEMPLATE, build_manual_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +22,7 @@ logger = logging.getLogger(__name__)
 class LMMProcessor:
     """Interface with the OpenRouter API to process page batches."""
 
-    DEFAULT_MODEL = "google/gemini-2.5-pro-exp"
+    DEFAULT_MODEL = "google/gemini-2.5-pro"
 
     def __init__(
         self,
@@ -42,11 +44,7 @@ class LMMProcessor:
         self.temperature = temperature
         self.max_retries = max_retries
         self.timeout = timeout
-        self.default_prompt = default_prompt or (
-            "You are a meticulous chunking assistant. Break the provided document "
-            "pages into semantically coherent chunks, returning well formatted "
-            "markdown with headings and short summaries for each chunk."
-        )
+        self.default_prompt = default_prompt or DEFAULT_MANUAL_PROMPT_TEMPLATE
 
     # ------------------------------------------------------------------
     # Public API
@@ -59,7 +57,7 @@ class LMMProcessor:
         prompt: Optional[str] = None,
         model: Optional[str] = None,
         temperature: Optional[float] = None,
-    ) -> Dict[str, Any]:
+    ) -> BatchProcessingResult:
         """Process a single batch of pages with the LMM."""
 
         model_to_use = model or self.DEFAULT_MODEL
@@ -124,30 +122,49 @@ class LMMProcessor:
 
         processing_time = time.time() - start_time
 
-        parsed_chunks = self._parse_chunks(raw_output)
-        heading_hierarchy = self._derive_heading_hierarchy(raw_output)
-        continuation_metadata = self._derive_continuation_metadata(parsed_chunks, raw_output)
-        last_chunks = parsed_chunks[-2:] if parsed_chunks else []
+        # Parse structured output using new schema
+        try:
+            structured_chunks = parse_structured_llm_output(raw_output)
+        except Exception as e:
+            logger.warning(f"Failed to parse structured output for batch {batch.batch_id}: {e}")
+            # Fallback to basic parsing
+            structured_chunks = parse_structured_llm_output(raw_output)
 
-        context_snapshot = {
-            "previous_context": context,
-            "last_chunks": last_chunks,
-            "heading_hierarchy": heading_hierarchy,
-            "continuation_metadata": continuation_metadata,
-        }
+        # Get last chunk for context continuity
+        last_chunk = structured_chunks[-1] if structured_chunks else None
 
-        return {
-            "raw_output": raw_output,
-            "chunks": parsed_chunks,
-            "heading_hierarchy": heading_hierarchy,
-            "continuation_metadata": continuation_metadata,
-            "last_chunks": last_chunks,
-            "context": context_snapshot,
+        # Build continuation context for next batch
+        continuation_context = None
+        if last_chunk and last_chunk.continues_to_next:
+            continuation_context = {
+                "previous_chunk_summary": last_chunk.content[-300:] if len(last_chunk.content) > 300 else last_chunk.content,
+                "previous_headings": {
+                    "level_1": last_chunk.level_1,
+                    "level_2": last_chunk.level_2,
+                    "level_3": last_chunk.level_3,
+                },
+                "previous_end_page": last_chunk.end_page,
+                "expects_continuation": True,
+            }
+
+        # Build processing metadata
+        processing_metadata = {
             "prompt_used": prompt_to_use,
             "model": model_to_use,
             "processing_time": processing_time,
             "warnings": warnings,
+            "batch_id": batch.batch_id,
+            "batch_number": batch.batch_number,
+            "chunk_count": len(structured_chunks),
         }
+
+        return BatchProcessingResult(
+            chunks=structured_chunks,
+            raw_output=raw_output,
+            last_chunk=last_chunk,
+            continuation_context=continuation_context,
+            processing_metadata=processing_metadata,
+        )
 
     # ------------------------------------------------------------------
     # Payload preparation helpers

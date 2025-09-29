@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 from PIL import Image, ImageDraw, ImageFont
 import logging
 
-from src.processors import PDFProcessor, ProcessingManager
+from src.processors import PDFProcessor, ProcessingManager, DatabaseWriter
 from src.models import (
     PDFDocument,
     SplitConfiguration,
@@ -23,7 +23,11 @@ from src.models import (
     BatchStatus,
     ProcessingStage,
 )
+from src.models.chunk_schema import BatchProcessingResult, ChunkOutput
 from src.prompts import build_manual_prompt, get_default_manual_prompt
+from src.managers import DocumentLifecycleManager
+from src.database.document_lifecycle_models import ProcessingMode
+from src.recovery import RestartManager
 
 load_dotenv()
 
@@ -46,6 +50,45 @@ pdf_processor = PDFProcessor(
 # Initialize Processing Manager for pipeline
 processing_manager = ProcessingManager(max_workers=4)
 
+# Initialize Database Writer for chunk storage
+try:
+    db_writer = DatabaseWriter()
+    logger.info("Database writer initialized successfully")
+    logger.info(f"Database writer connection status: {db_writer.get_connection_status()}")
+except Exception as e:
+    logger.error(f"Database writer initialization failed: {e}")
+    import traceback
+    logger.error(f"Database writer error details: {traceback.format_exc()}")
+    db_writer = None
+
+# Initialize Document Lifecycle Manager for comprehensive tracking
+try:
+    lifecycle_manager = DocumentLifecycleManager()
+    logger.info("Document lifecycle manager initialized successfully")
+    logger.info(f"Lifecycle manager connection status: {lifecycle_manager.get_connection_status()}")
+except Exception as e:
+    logger.error(f"Document lifecycle manager initialization failed: {e}")
+    import traceback
+    logger.error(f"Document lifecycle manager error details: {traceback.format_exc()}")
+    lifecycle_manager = None
+
+# Initialize Restart Manager for recovery
+try:
+    restart_manager = RestartManager(lifecycle_manager)
+    logger.info("Restart manager initialized successfully")
+
+    # Run startup recovery check
+    recovery_result = restart_manager.run_recovery_check(max_age_hours=24, auto_resume=True)
+    if recovery_result.get("total_incomplete_documents", 0) > 0:
+        logger.info(f"Startup recovery: {recovery_result.get('successful_resumes', 0)}/{recovery_result.get('total_processed', 0)} documents resumed")
+    else:
+        logger.info("Startup recovery: No incomplete documents found")
+except Exception as e:
+    logger.error(f"Restart manager initialization failed: {e}")
+    import traceback
+    logger.error(f"Restart manager error details: {traceback.format_exc()}")
+    restart_manager = None
+
 
 @dataclass
 class ManualSession:
@@ -58,6 +101,8 @@ class ManualSession:
     display_name: Optional[str] = None
     processing_task: Optional[ProcessingTask] = None
     processing_prompt: Optional[str] = None
+    document_id: Optional[str] = None  # Document ID from lifecycle manager
+    s3_pdf_url: Optional[str] = None  # S3 URL of uploaded PDF
 
 
 manual_sessions: Dict[str, ManualSession] = {}
@@ -152,7 +197,8 @@ def _process_manual_batches_job(session_id: str, prompt_template: str) -> None:
                 )
                 prompt_for_batch = build_manual_prompt(prompt_template, context_payload)
 
-                lmm_result = lmm_processor.process_batch(
+                # Process batch with enhanced structured output
+                lmm_result: BatchProcessingResult = lmm_processor.process_batch(
                     batch,
                     context=context_payload,
                     prompt=prompt_for_batch,
@@ -160,21 +206,106 @@ def _process_manual_batches_job(session_id: str, prompt_template: str) -> None:
                     temperature=task.temperature,
                 )
 
-                batch.lmm_output = lmm_result.get("raw_output")
-                batch.chunk_summary = lmm_result.get("chunks", [])
-                batch.context_snapshot = lmm_result.get("context", {})
-                batch.prompt_used = lmm_result.get("prompt_used")
-                batch.processing_time = lmm_result.get("processing_time")
-                batch.warnings = lmm_result.get("warnings", [])
+                # Store structured output data
+                batch.lmm_output = lmm_result.raw_output
+                batch.chunk_summary = [chunk.to_dict() for chunk in lmm_result.chunks]
+                batch.context_snapshot = {
+                    "continuation_context": lmm_result.continuation_context,
+                    "processing_metadata": lmm_result.processing_metadata,
+                    "structured_chunks": [chunk.to_dict() for chunk in lmm_result.chunks],
+                    "last_chunk": lmm_result.last_chunk.to_dict() if lmm_result.last_chunk else None,
+                }
+                batch.prompt_used = lmm_result.processing_metadata.get("prompt_used")
+                batch.processing_time = lmm_result.processing_metadata.get("processing_time")
+                batch.warnings = lmm_result.processing_metadata.get("warnings", [])
                 batch.processed_at = datetime.utcnow()
                 batch.status = BatchStatus.COMPLETED
 
-                processing_manager.context_manager.update_context(
+                # Update context using new structured method
+                processing_manager.context_manager.update_context_from_batch_result(
                     document.file_path,
-                    last_chunks=lmm_result.get("last_chunks"),
-                    heading_hierarchy=lmm_result.get("heading_hierarchy"),
-                    continuation_metadata=lmm_result.get("continuation_metadata"),
+                    lmm_result,
+                    index,
                 )
+
+                # Save chunks to enhanced lifecycle database if available
+                logger.info(f"Manual processing: lifecycle_manager available: {lifecycle_manager is not None}")
+                if lifecycle_manager and session.document_id:
+                    try:
+                        logger.info(f"Manual processing: Attempting to save enhanced chunks for batch {batch.batch_id}")
+
+                        # Create batch record if it doesn't exist
+                        page_images_info = []
+                        for page_num in range(batch.start_page, batch.end_page + 1):
+                            if page_num <= len(session.document.pages):
+                                page = session.document.pages[page_num - 1]
+                                if hasattr(page, 's3_url') and page.s3_url:
+                                    from src.database.document_lifecycle_models import PageImageInfo
+                                    page_image_info = PageImageInfo(
+                                        page_number=page_num,
+                                        s3_original_url=page.s3_url,
+                                        s3_thumbnail_url=getattr(page, 's3_thumbnail_url', None),
+                                        image_dimensions={"width": page.image.width, "height": page.image.height} if page.image else {},
+                                        file_size_bytes=0
+                                    )
+                                    page_images_info.append(page_image_info)
+
+                        # Create batch record
+                        batch_id = lifecycle_manager.create_batch_record(
+                            document_id=session.document_id,
+                            batch_number=batch.batch_number,
+                            page_range={
+                                "start_page": batch.start_page,
+                                "end_page": batch.end_page,
+                                "total_pages": batch.total_pages
+                            },
+                            page_images=page_images_info
+                        )
+
+                        # Update batch processing result
+                        processing_metadata = {
+                            "model": task.model,
+                            "temperature": task.temperature,
+                            "prompt_used": prompt_for_batch,
+                            "processing_time": batch.processing_time,
+                            "tokens_used": lmm_result.processing_metadata.get("tokens_used", 0)
+                        }
+                        lifecycle_manager.update_batch_processing_result(
+                            batch_id=batch_id,
+                            batch_result=lmm_result,
+                            processing_metadata=processing_metadata
+                        )
+
+                        # Save enhanced chunks
+                        chunk_ids = lifecycle_manager.save_chunks(
+                            document_id=session.document_id,
+                            batch_id=batch_id,
+                            batch_result=lmm_result,
+                            processing_task=task
+                        )
+                        logger.info(f"Manual processing: Successfully saved {len(chunk_ids)} enhanced chunks for batch {batch.batch_id}")
+
+                    except Exception as lifecycle_error:
+                        logger.error(f"Manual processing: Lifecycle manager error for batch {batch.batch_id}: {lifecycle_error}")
+                        import traceback
+                        logger.error(f"Manual processing: Lifecycle manager traceback: {traceback.format_exc()}")
+
+                # Save chunks to legacy database if db_writer is available (for backwards compatibility)
+                logger.info(f"Manual processing: db_writer available: {db_writer is not None}")
+                if db_writer:
+                    try:
+                        logger.info(f"Manual processing: Attempting to save chunks for batch {batch.batch_id}")
+                        write_result = db_writer.write_batch(task, batch, lmm_result)
+                        if write_result["success"]:
+                            logger.info(f"Manual processing: Successfully saved {write_result['chunks_saved']} chunks for batch {batch.batch_id}")
+                        else:
+                            logger.error(f"Manual processing: Failed to save chunks for batch {batch.batch_id}: {write_result.get('error')}")
+                    except Exception as db_error:
+                        logger.error(f"Manual processing: Database write error for batch {batch.batch_id}: {db_error}")
+                        import traceback
+                        logger.error(f"Manual processing: Database write traceback: {traceback.format_exc()}")
+                else:
+                    logger.warning(f"Manual processing: db_writer is None, cannot save chunks for batch {batch.batch_id}")
 
                 task.progress = (index / total_batches) * 100.0
             except Exception as batch_error:
@@ -189,11 +320,19 @@ def _process_manual_batches_job(session_id: str, prompt_template: str) -> None:
                 task.status = ProcessingStage.ERROR
                 task.error_message = str(batch_error)
                 task.completed_at = datetime.utcnow()
+
+                # Register the failed task with processing_manager so it appears in the pipeline dashboard
+                with processing_manager._lock:
+                    processing_manager.completed_tasks[task.task_id] = task
                 return
 
         task.status = ProcessingStage.COMPLETED
         task.completed_at = datetime.utcnow()
         task.context_state = processing_manager.context_manager.get_context(document.file_path)
+
+        # Register the completed task with processing_manager so it appears in the pipeline dashboard
+        with processing_manager._lock:
+            processing_manager.completed_tasks[task.task_id] = task
     except Exception as unexpected_error:
         logger.exception(
             "Unexpected error while processing manual session %s: %s",
@@ -203,6 +342,10 @@ def _process_manual_batches_job(session_id: str, prompt_template: str) -> None:
         task.status = ProcessingStage.ERROR
         task.error_message = str(unexpected_error)
         task.completed_at = datetime.utcnow()
+
+        # Register the failed task with processing_manager so it appears in the pipeline dashboard
+        with processing_manager._lock:
+            processing_manager.completed_tasks[task.task_id] = task
     finally:
         if session.temp_file and os.path.exists(session.temp_file):
             try:
@@ -235,6 +378,8 @@ async def process_pdf(
         temp_uploaded_path = None
         is_human_loop = process_mode == "human"
         display_name: Optional[str] = None
+        document_id = None
+        s3_pdf_url = None
 
         if file and file.filename:
             # Handle uploaded file
@@ -247,12 +392,26 @@ async def process_pdf(
                 content = await file.read()
                 buffer.write(content)
 
+            # Register document with lifecycle manager and upload to S3
+            if lifecycle_manager:
+                try:
+                    processing_mode = ProcessingMode.HUMAN_LOOP if is_human_loop else ProcessingMode.AUTO
+                    document_id, s3_pdf_url = lifecycle_manager.register_document(
+                        pdf_path=temp_path,
+                        original_filename=file.filename,
+                        processing_mode=processing_mode,
+                        metadata={"upload_source": "web_interface", "process_mode": process_mode}
+                    )
+                    logger.info(f"Registered document {document_id} with S3 URL {s3_pdf_url}")
+                except Exception as e:
+                    logger.error(f"Failed to register document with lifecycle manager: {e}")
+
             document = pdf_processor.load_from_local(temp_path)
             if is_human_loop:
                 temp_uploaded_path = temp_path
                 display_name = file.filename
             else:
-                # Clean up temp file
+                # Clean up temp file after registration
                 os.remove(temp_path)
 
         elif s3_url:
@@ -260,10 +419,34 @@ async def process_pdf(
             document = pdf_processor.load_from_url(s3_url)
             display_name = os.path.basename(s3_url)
 
+            # Register document with lifecycle manager if it's not already tracked
+            if lifecycle_manager:
+                try:
+                    # For S3 URLs, we assume the PDF is already uploaded, so we create a minimal record
+                    processing_mode = ProcessingMode.HUMAN_LOOP if is_human_loop else ProcessingMode.AUTO
+                    # Note: For existing S3 URLs, we would need to download temporarily to register
+                    logger.info(f"Processing existing S3 URL: {s3_url}")
+                except Exception as e:
+                    logger.error(f"Failed to process S3 URL with lifecycle manager: {e}")
+
         elif file_path:
             # Handle local file path
             document = pdf_processor.load_from_local(file_path)
             display_name = os.path.basename(file_path)
+
+            # Register document with lifecycle manager and upload to S3
+            if lifecycle_manager:
+                try:
+                    processing_mode = ProcessingMode.HUMAN_LOOP if is_human_loop else ProcessingMode.AUTO
+                    document_id, s3_pdf_url = lifecycle_manager.register_document(
+                        pdf_path=file_path,
+                        original_filename=os.path.basename(file_path),
+                        processing_mode=processing_mode,
+                        metadata={"upload_source": "local_file", "process_mode": process_mode, "original_path": file_path}
+                    )
+                    logger.info(f"Registered local document {document_id} with S3 URL {s3_pdf_url}")
+                except Exception as e:
+                    logger.error(f"Failed to register local document with lifecycle manager: {e}")
 
         else:
             raise HTTPException(status_code=400, detail="Please provide a file, file path, or S3 URL")
@@ -273,6 +456,17 @@ async def process_pdf(
 
         # Get all pages as images with page numbers
         page_images = pdf_processor.get_pages_as_images(document, add_page_numbers=True, max_size=(400, 600))
+
+        # Save images to S3 if lifecycle manager is available and document was registered
+        if lifecycle_manager and document_id and is_human_loop:
+            try:
+                # Get original size images for S3 storage
+                original_images = pdf_processor.get_pages_as_images(document, add_page_numbers=False, max_size=(2000, 3000))
+                page_images_info = pdf_processor.save_images_with_lifecycle_manager(document, lifecycle_manager, document_id)
+                logger.info(f"Saved {len(page_images_info)} images to S3 for manual session document {document_id}")
+            except Exception as e:
+                logger.error(f"Failed to save images to S3 for manual session: {e}")
+                # Continue without S3 images
 
         # Convert all images to base64 for display
         pages_base64 = []
@@ -293,7 +487,9 @@ async def process_pdf(
                 document=document,
                 source_path=source_path,
                 temp_file=temp_uploaded_path,
-                display_name=display_name or (os.path.basename(source_path) if source_path else None)
+                display_name=display_name or (os.path.basename(source_path) if source_path else None),
+                document_id=document_id,
+                s3_pdf_url=s3_pdf_url
             )
 
             return templates.TemplateResponse("manual_processing.html", {
@@ -641,6 +837,77 @@ async def get_pipeline_status():
         return JSONResponse(content=status)
     except Exception as e:
         logger.error(f"Error getting pipeline status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/database/status")
+async def get_database_status():
+    """Get database connection status for debugging"""
+    try:
+        main_db_status = {
+            "main_db_writer_initialized": db_writer is not None,
+            "main_db_writer_status": db_writer.get_connection_status() if db_writer else None
+        }
+
+        processing_db_status = {
+            "processing_manager_db_writer_initialized": processing_manager.db_writer is not None,
+            "processing_manager_db_writer_status": processing_manager.db_writer.get_connection_status() if processing_manager.db_writer else None
+        }
+
+        lifecycle_status = {
+            "lifecycle_manager_initialized": lifecycle_manager is not None,
+            "lifecycle_manager_status": lifecycle_manager.get_connection_status() if lifecycle_manager else None
+        }
+
+        return JSONResponse(content={
+            "main": main_db_status,
+            "processing_manager": processing_db_status,
+            "lifecycle_manager": lifecycle_status
+        })
+    except Exception as e:
+        logger.error(f"Error getting database status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/recovery/status")
+async def get_recovery_status():
+    """Get recovery system status and statistics"""
+    try:
+        if not restart_manager:
+            raise HTTPException(status_code=503, detail="Recovery system not available")
+
+        stats = restart_manager.get_recovery_statistics(max_age_hours=24)
+        return JSONResponse(content=stats)
+    except Exception as e:
+        logger.error(f"Error getting recovery status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/recovery/run")
+async def run_recovery_check():
+    """Run a recovery check and optionally auto-resume incomplete documents"""
+    try:
+        if not restart_manager:
+            raise HTTPException(status_code=503, detail="Recovery system not available")
+
+        # Run recovery check with auto-resume enabled
+        result = restart_manager.run_recovery_check(max_age_hours=24, auto_resume=True)
+        return JSONResponse(content=result)
+    except Exception as e:
+        logger.error(f"Error running recovery check: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/recovery/document/{document_id}/resume")
+async def resume_document_processing_api(document_id: str):
+    """Resume processing for a specific document"""
+    try:
+        if not restart_manager:
+            raise HTTPException(status_code=503, detail="Recovery system not available")
+
+        result = restart_manager.resume_document_processing(document_id)
+        if result["success"]:
+            return JSONResponse(content=result)
+        else:
+            raise HTTPException(status_code=400, detail=result.get("error", "Resume failed"))
+    except Exception as e:
+        logger.error(f"Error resuming document {document_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/pipeline/tasks/{task_id}/images")

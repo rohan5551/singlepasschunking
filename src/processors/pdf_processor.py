@@ -292,6 +292,84 @@ class PDFProcessor:
         page.image.save(output_path, format=format)
         return output_path
 
+    def save_images_with_lifecycle_manager(self, document: PDFDocument, lifecycle_manager, document_id: str) -> List[Dict[str, str]]:
+        """
+        Save all page images to S3 using the DocumentLifecycleManager.
+
+        Args:
+            document: PDFDocument with pages containing images
+            lifecycle_manager: DocumentLifecycleManager instance
+            document_id: Document ID for tracking
+
+        Returns:
+            List of page image information dictionaries
+        """
+        try:
+            # Extract images from document pages
+            images = [page.image for page in document.pages if page.image is not None]
+
+            if not images:
+                logger.warning(f"No images found in document {document_id}")
+                return []
+
+            # Track the start of PDF processing stage
+            lifecycle_manager.track_stage_start(
+                document_id=document_id,
+                stage_name="pdf_processing",
+                stage_data={
+                    "total_pages": len(images),
+                    "processing_dpi": 200,
+                    "image_format": "PNG"
+                }
+            )
+
+            # Save images using lifecycle manager
+            page_images = lifecycle_manager.save_page_images(
+                document_id=document_id,
+                images=images,
+                create_thumbnails=True
+            )
+
+            # Update document pages with S3 URLs
+            for i, page_image_info in enumerate(page_images):
+                if i < len(document.pages):
+                    document.pages[i].s3_url = page_image_info.s3_original_url
+                    document.pages[i].s3_thumbnail_url = page_image_info.s3_thumbnail_url
+
+            # Track completion of PDF processing stage
+            lifecycle_manager.track_stage_completion(
+                document_id=document_id,
+                stage_name="pdf_processing",
+                stage_data={
+                    "images_saved": len(page_images),
+                    "s3_folder": page_images[0].s3_original_url.rsplit('/', 1)[0] if page_images else None
+                }
+            )
+
+            logger.info(f"Saved {len(page_images)} images to S3 for document {document_id}")
+
+            # Return information for compatibility
+            return [
+                {
+                    "page_number": img.page_number,
+                    "s3_url": img.s3_original_url,
+                    "s3_thumbnail_url": img.s3_thumbnail_url or "",
+                    "dimensions": img.image_dimensions
+                }
+                for img in page_images
+            ]
+
+        except Exception as e:
+            logger.error(f"Failed to save images for document {document_id}: {e}")
+            # Track error in lifecycle manager
+            if lifecycle_manager:
+                lifecycle_manager.track_stage_error(
+                    document_id=document_id,
+                    stage_name="pdf_processing",
+                    error_message=str(e)
+                )
+            raise
+
     def get_document_info(self, document: PDFDocument) -> Dict[str, Any]:
         """
         Get comprehensive document information
@@ -307,7 +385,9 @@ class PDFProcessor:
                 {
                     'page_number': page.page_number,
                     'has_image': page.image is not None,
-                    'image_size': page.image.size if page.image else None
+                    'image_size': page.image.size if page.image else None,
+                    's3_url': getattr(page, 's3_url', None),
+                    's3_thumbnail_url': getattr(page, 's3_thumbnail_url', None)
                 }
                 for page in document.pages
             ]

@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import threading
 from typing import Dict, List, Optional, Any
+from ..models.chunk_schema import BatchProcessingResult, ChunkOutput
 
 
 class ContextManager:
@@ -38,7 +39,9 @@ class ContextManager:
         return {
             "last_chunks": [],
             "heading_hierarchy": {},
-            "continuation_metadata": {}
+            "continuation_metadata": {},
+            "continuation_context": None,
+            "processing_metadata": {},
         }
 
     def reset_context(self, document_id: str) -> None:
@@ -103,6 +106,57 @@ class ContextManager:
 
             if continuation_metadata is not None:
                 context["continuation_metadata"] = continuation_metadata
+
+            return copy.deepcopy(context)
+
+    def update_context_from_batch_result(
+        self,
+        document_id: str,
+        batch_result: BatchProcessingResult,
+        batch_number: int,
+    ) -> Dict[str, Any]:
+        """Update context using structured batch processing result.
+
+        Args:
+            document_id: Unique document identifier.
+            batch_result: Result from LMM batch processing.
+            batch_number: Current batch number for tracking.
+
+        Returns:
+            Updated context dictionary.
+        """
+        with self._lock:
+            context = self._contexts.setdefault(document_id, self._empty_context())
+
+            # Update with structured data from batch result
+            context["continuation_context"] = batch_result.continuation_context
+            context["processing_metadata"] = {
+                **batch_result.processing_metadata,
+                "batch_number": batch_number,
+            }
+
+            # Maintain legacy fields for backward compatibility
+            if batch_result.chunks:
+                # Create legacy last_chunks format
+                context["last_chunks"] = [
+                    f"{chunk.level_3}: {chunk.content[:150]}..." if len(chunk.content) > 150 else f"{chunk.level_3}: {chunk.content}"
+                    for chunk in batch_result.chunks[-2:]
+                ]
+
+                # Create heading hierarchy from last chunk
+                last_chunk = batch_result.chunks[-1]
+                context["heading_hierarchy"] = {
+                    "level1": last_chunk.level_1,
+                    "level2": last_chunk.level_2,
+                    "level3": last_chunk.level_3,
+                }
+
+            # Legacy continuation metadata
+            context["continuation_metadata"] = {
+                "chunk_count": len(batch_result.chunks),
+                "has_continuation": batch_result.last_chunk and batch_result.last_chunk.continues_to_next,
+                "batch_number": batch_number,
+            }
 
             return copy.deepcopy(context)
 

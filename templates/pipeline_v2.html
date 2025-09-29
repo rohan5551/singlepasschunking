@@ -155,6 +155,20 @@
                             <i class="fas fa-chevron-right"></i>
                         </div>
 
+                        <div class="stage-container" data-stage="db_writing" onclick="selectStage('db_writing')">
+                            <div class="stage-icon">
+                                <i class="fas fa-database"></i>
+                            </div>
+                            <div class="stage-info">
+                                <div class="stage-title">DB Writing</div>
+                                <div class="stage-count" id="dbWritingStageCount">0</div>
+                            </div>
+                        </div>
+
+                        <div class="pipeline-arrow">
+                            <i class="fas fa-chevron-right"></i>
+                        </div>
+
                         <div class="stage-container" data-stage="completed" onclick="selectStage('completed')">
                             <div class="stage-icon">
                                 <i class="fas fa-check-circle"></i>
@@ -267,7 +281,7 @@
                         <div class="col-md-8">
                             <label class="form-label" for="modelSelect">Model</label>
                             <select class="form-select" id="modelSelect">
-                                <option value="google/gemini-2.5-pro-exp" selected>Gemini 2.5 Pro (OpenRouter)</option>
+                                <option value="google/gemini-2.5-pro" selected>Gemini 2.5 Pro (OpenRouter)</option>
                                 <option value="google/gemini-2.0-flash-001">Gemini 2.0 Flash (OpenRouter)</option>
                             </select>
                             <div class="form-text">Select a multimodal model that supports image inputs.</div>
@@ -311,6 +325,7 @@ const STAGES = {
     splitting: { title: 'Document Splitting', description: 'Creating page batches for processing', icon: 'fas fa-cut' },
     lmm_processing: { title: 'LMM Processing', description: 'Sending page batches to the multimodal model', icon: 'fas fa-robot' },
     chunking: { title: 'Chunking', description: 'Review chunked output and continuation context', icon: 'fas fa-object-group' },
+    db_writing: { title: 'Database Writing', description: 'Saving processed chunks to MongoDB', icon: 'fas fa-database' },
     completed: { title: 'Completed', description: 'Successfully processed documents', icon: 'fas fa-check-circle' },
     error: { title: 'Errors', description: 'Documents that encountered processing errors', icon: 'fas fa-exclamation-triangle' }
 };
@@ -546,6 +561,7 @@ function updateStageFlow() {
         splitting: tasks.filter(t => t.status === 'splitting').length,
         lmm_processing: tasks.filter(t => t.status === 'lmm_processing').length,
         chunking: tasks.filter(t => t.status === 'chunking').length,
+        db_writing: tasks.filter(t => t.status === 'db_writing').length,
         completed: tasks.filter(t => t.status === 'completed').length
     };
 
@@ -555,6 +571,7 @@ function updateStageFlow() {
     document.getElementById('splittingStageCount').textContent = stageCounts.splitting;
     document.getElementById('lmmStageCount').textContent = stageCounts.lmm_processing;
     document.getElementById('chunkingStageCount').textContent = stageCounts.chunking;
+    document.getElementById('dbWritingStageCount').textContent = stageCounts.db_writing;
     document.getElementById('completedStageCount').textContent = stageCounts.completed;
 
     // Update active state
@@ -807,7 +824,7 @@ function createSummaryContent(task) {
                         <div class="col-md-6">
                             <div class="info-item">
                                 <label>Model</label>
-                                <span>${escapeHtml(task.model || 'google/gemini-2.5-pro-exp')}</span>
+                                <span>${escapeHtml(task.model || 'google/gemini-2.5-pro')}</span>
                             </div>
                         </div>
                         <div class="col-md-3">
@@ -1075,9 +1092,66 @@ function createChunkingContent(task) {
     const accordionId = `chunkAccordion-${task.task_id}`;
 
     const accordionItems = task.batches.map((batch, index) => {
-        const chunkSummary = Array.isArray(batch.chunk_summary) && batch.chunk_summary.length > 0
-            ? `<div class="chunk-summary"><strong>Chunk Highlights</strong><ul>${batch.chunk_summary.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div>`
-            : '';
+        // Handle both old and new structured chunk formats
+        let structuredChunksDisplay = '';
+        let chunkSummary = '';
+
+        if (Array.isArray(batch.chunk_summary) && batch.chunk_summary.length > 0) {
+            // Check if this is the new structured format
+            if (batch.chunk_summary[0] && typeof batch.chunk_summary[0] === 'object' && batch.chunk_summary[0].content !== undefined) {
+                // New structured format
+                const chunkCount = batch.chunk_summary.length;
+                const continuationInfo = batch.chunk_summary.some(chunk => chunk.continues_to_next) ?
+                    '<span class="badge bg-warning ms-2">Continues to next batch</span>' : '';
+
+                structuredChunksDisplay = `
+                    <div class="structured-chunks mb-3">
+                        <div class="d-flex align-items-center mb-2">
+                            <h6 class="mb-0"><i class="fas fa-layer-group me-2"></i>Structured Chunks (${chunkCount})</h6>
+                            ${continuationInfo}
+                        </div>
+                        <div class="chunk-cards">
+                            ${batch.chunk_summary.map((chunk, chunkIndex) => `
+                                <div class="card chunk-card mb-2">
+                                    <div class="card-header py-2">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <small class="text-muted">Chunk ${chunkIndex + 1} • Pages ${chunk.start_page}-${chunk.end_page}</small>
+                                            <div class="d-flex align-items-center">
+                                                ${chunk.continues_from_previous ? '<span class="badge bg-info badge-sm">Continues from previous</span>' : ''}
+                                                ${chunk.continues_to_next ? '<span class="badge bg-warning badge-sm ms-1">Continues to next</span>' : ''}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="card-body py-2">
+                                        <div class="chunk-headings mb-2">
+                                            <div class="heading-level-1">${escapeHtml(chunk.level_1)}</div>
+                                            <div class="heading-level-2">${escapeHtml(chunk.level_2)}</div>
+                                            <div class="heading-level-3">${escapeHtml(chunk.level_3)}</div>
+                                        </div>
+                                        <div class="chunk-content">
+                                            <div class="content-preview">
+                                                ${escapeHtml(chunk.content)}
+                                            </div>
+                                        </div>
+                                        ${chunk.table ? `
+                                            <div class="chunk-table mt-2">
+                                                <h6 class="mb-1">Table Data:</h6>
+                                                <div class="table-container">
+                                                    ${chunk.table}
+                                                </div>
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            } else {
+                // Legacy format - array of strings
+                chunkSummary = `<div class="chunk-summary"><strong>Chunk Highlights</strong><ul>${batch.chunk_summary.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div>`;
+            }
+        }
 
         const contextDetails = renderContextSnapshot(batch.context_snapshot);
 
@@ -1086,27 +1160,31 @@ function createChunkingContent(task) {
             : '';
 
         const lmmOutput = batch.lmm_output
-            ? `<pre class="chunk-output">${escapeHtml(batch.lmm_output)}</pre>`
+            ? `
+                <details class="raw-output-section">
+                    <summary><i class="fas fa-code me-2"></i>Raw LLM Output</summary>
+                    <pre class="chunk-output mt-2">${escapeHtml(batch.lmm_output)}</pre>
+                </details>
+              `
             : '<p class="text-muted mb-0">Output not available for this batch.</p>';
 
         return `
             <div class="accordion-item">
-                <h2 class="accordion-header" id="chunkHeading-${batch.batch_id}">
-                    <button class="accordion-button ${index === 0 ? '' : 'collapsed'}" type="button"
-                            data-bs-toggle="collapse"
-                            data-bs-target="#chunkCollapse-${batch.batch_id}" aria-expanded="${index === 0}"
-                            aria-controls="chunkCollapse-${batch.batch_id}">
-                        <div class="w-100 d-flex justify-content-between align-items-center">
+                <div class="batch-header" onclick="toggleBatchContent('${task.task_id}', '${batch.batch_id}', this)">
+                    <div class="d-flex justify-content-between align-items-center p-3 bg-light border">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-chevron-down batch-toggle-icon me-2 ${index === 0 ? '' : 'collapsed'}" id="icon-${task.task_id}-${batch.batch_id}"></i>
                             <span>Batch ${batch.batch_number} • Pages ${batch.start_page}-${batch.end_page}</span>
-                            <span class="badge bg-${getStatusClass(batch.status)}">${formatStatus(batch.status || 'completed')}</span>
                         </div>
-                    </button>
-                </h2>
-                <div id="chunkCollapse-${batch.batch_id}" class="accordion-collapse collapse ${index === 0 ? 'show' : ''}" data-bs-parent="#${accordionId}">
+                        <span class="badge bg-${getStatusClass(batch.status)}">${formatStatus(batch.status || 'completed')}</span>
+                    </div>
+                </div>
+                <div id="batchContent-${task.task_id}-${batch.batch_id}" class="batch-content ${index === 0 ? '' : 'd-none'}">
                     <div class="accordion-body">
                         ${warningNotice}
-                        ${lmmOutput}
+                        ${structuredChunksDisplay}
                         ${chunkSummary}
+                        ${lmmOutput}
                         ${contextDetails}
                     </div>
                 </div>
@@ -1117,7 +1195,7 @@ function createChunkingContent(task) {
     return `
         <div class="chunking-output">
             <div class="mb-3">
-                <h6><i class="fas fa-object-group me-2"></i>Chunked Output</h6>
+                <h6><i class="fas fa-object-group me-2"></i>Chunked Output (${task.batches.length} batches)</h6>
                 <p class="text-muted mb-0">Review the multimodal model output for each batch, including context passed to the next batch.</p>
             </div>
             <div class="accordion" id="${accordionId}">
@@ -2230,5 +2308,210 @@ function initializeBatchesContent(task) {
 window.addEventListener('beforeunload', () => {
     if (updateInterval) clearInterval(updateInterval);
 });
+
+// Removed toggleFullContent function - no longer needed
+
+// Simple manual accordion for batch content
+function toggleBatchContent(taskId, batchId, headerElement) {
+    try {
+        const contentId = `batchContent-${taskId}-${batchId}`;
+        const iconId = `icon-${taskId}-${batchId}`;
+
+        const content = document.getElementById(contentId);
+        const icon = document.getElementById(iconId);
+
+        if (!content || !icon) {
+            console.error('Batch content or icon not found:', contentId, iconId);
+            return;
+        }
+
+        // Close all other batches in the same accordion
+        const accordion = headerElement.closest('.accordion');
+        if (accordion) {
+            accordion.querySelectorAll('.batch-content').forEach(otherContent => {
+                if (otherContent !== content && !otherContent.classList.contains('d-none')) {
+                    otherContent.classList.add('d-none');
+                }
+            });
+
+            accordion.querySelectorAll('.batch-toggle-icon').forEach(otherIcon => {
+                if (otherIcon !== icon && !otherIcon.classList.contains('collapsed')) {
+                    otherIcon.classList.add('collapsed');
+                }
+            });
+        }
+
+        // Toggle current content
+        if (content.classList.contains('d-none')) {
+            // Show content
+            content.classList.remove('d-none');
+            icon.classList.remove('collapsed');
+        } else {
+            // Hide content
+            content.classList.add('d-none');
+            icon.classList.add('collapsed');
+        }
+    } catch (error) {
+        console.error('Error toggling batch content:', error);
+    }
+}
 </script>
+
+<style>
+/* Structured Chunks Styling */
+.structured-chunks .chunk-cards {
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.chunk-card {
+    border: 1px solid #e0e0e0;
+    transition: box-shadow 0.2s ease;
+}
+
+.chunk-card:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.chunk-headings {
+    background-color: #f8f9fa;
+    border-radius: 4px;
+    padding: 8px;
+}
+
+.heading-level-1 {
+    font-weight: bold;
+    color: #495057;
+    font-size: 0.9rem;
+}
+
+.heading-level-2 {
+    font-weight: 600;
+    color: #6c757d;
+    font-size: 0.85rem;
+    margin-top: 2px;
+}
+
+.heading-level-3 {
+    color: #868e96;
+    font-size: 0.8rem;
+    margin-top: 2px;
+}
+
+.chunk-content {
+    margin-top: 8px;
+}
+
+.content-preview {
+    background-color: #ffffff;
+    border: 1px solid #e9ecef;
+    border-radius: 4px;
+    padding: 8px;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 0.85rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.chunk-table {
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    overflow-x: auto;
+}
+
+.chunk-table .table-container {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.chunk-table table {
+    margin-bottom: 0;
+    font-size: 0.85rem;
+}
+
+.badge-sm {
+    font-size: 0.7rem;
+    padding: 0.2rem 0.4rem;
+}
+
+.raw-output-section {
+    margin-top: 16px;
+    padding: 8px;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+}
+
+.raw-output-section summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: #495057;
+}
+
+.raw-output-section summary:hover {
+    color: #007bff;
+}
+
+/* Continuation indicators */
+.badge.bg-warning {
+    background-color: #ffc107 !important;
+    color: #212529;
+}
+
+.badge.bg-info {
+    background-color: #0dcaf0 !important;
+    color: #000;
+}
+
+/* Ensure accordion items are visible */
+.accordion-item {
+    margin-bottom: 0.5rem;
+    border: 1px solid #dee2e6 !important;
+}
+
+.accordion-button {
+    border-bottom: 1px solid #dee2e6;
+}
+
+.accordion-button:not(.collapsed) {
+    background-color: #e7f1ff;
+    box-shadow: inset 0 -1px 0 rgba(0,0,0,.125);
+}
+
+/* Debug styles to ensure visibility */
+.chunking-output .accordion {
+    min-height: 100px;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    padding: 1rem;
+}
+
+/* Manual accordion toggle styles */
+.batch-header {
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.batch-header:hover {
+    background-color: #f5f5f5 !important;
+}
+
+.batch-toggle-icon {
+    transition: transform 0.3s ease;
+    font-size: 0.8rem;
+}
+
+.batch-toggle-icon.collapsed {
+    transform: rotate(-90deg);
+}
+
+.batch-content {
+    border-left: 1px solid #dee2e6;
+    border-right: 1px solid #dee2e6;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.batch-content .accordion-body {
+    padding: 1.25rem;
+}
+</style>
 {% endblock %}

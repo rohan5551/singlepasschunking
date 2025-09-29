@@ -137,14 +137,69 @@ def build_manual_prompt(
 
     prompt_template = template or DEFAULT_MANUAL_PROMPT_TEMPLATE
     context_dict: Dict[str, Any] = context or {}
-    context_json = json.dumps(context_dict, ensure_ascii=False, indent=2)
+
+    # Enhanced context formatting for better continuity
+    context_text = _format_enhanced_context(context_dict)
 
     if "{context_placeholder}" in prompt_template:
-        return prompt_template.replace("{context_placeholder}", context_json)
+        return prompt_template.replace("{context_placeholder}", context_text)
 
     return (
-        f"{prompt_template}\n\n## CONTEXT FROM PREVIOUS BATCH:\n{context_json}"
+        f"{prompt_template}\n\n## CONTEXT FROM PREVIOUS BATCH:\n{context_text}"
     )
+
+
+def _format_enhanced_context(context: Dict[str, Any]) -> str:
+    """Format context with enhanced information for better continuity."""
+    if not context:
+        return "No previous context available. This is the first batch."
+
+    parts = []
+
+    # Previous batch continuation info
+    if "continuation_context" in context:
+        continuation = context["continuation_context"]
+        if continuation and continuation.get("expects_continuation"):
+            parts.append("⚠️ **CONTINUATION REQUIRED**: The previous batch ended with incomplete content that continues into this batch.")
+
+            # Add previous chunk summary
+            if "previous_chunk_summary" in continuation:
+                parts.append(f"**Previous content ended with:**\n{continuation['previous_chunk_summary']}")
+
+            # Add previous headings for context
+            if "previous_headings" in continuation:
+                headings = continuation["previous_headings"]
+                parts.append(f"**Previous section structure:**")
+                parts.append(f"- Level 1: {headings.get('level_1', 'Unknown')}")
+                parts.append(f"- Level 2: {headings.get('level_2', 'Unknown')}")
+                parts.append(f"- Level 3: {headings.get('level_3', 'Unknown')}")
+
+            if "previous_end_page" in continuation:
+                parts.append(f"**Previous batch ended on page:** {continuation['previous_end_page']}")
+
+    # Legacy context support
+    last_chunks = context.get("last_chunks", [])
+    if last_chunks and not context.get("continuation_context"):
+        parts.append("**Recent chunks from previous batch:**")
+        for i, chunk in enumerate(last_chunks[-2:], 1):
+            if isinstance(chunk, str):
+                preview = chunk[:200] + "..." if len(chunk) > 200 else chunk
+                parts.append(f"{i}. {preview}")
+
+    # Heading hierarchy
+    heading_hierarchy = context.get("heading_hierarchy", {})
+    if heading_hierarchy:
+        parts.append("**Document structure context:**")
+        for level, title in heading_hierarchy.items():
+            parts.append(f"- {level}: {title}")
+
+    # Processing metadata
+    if "processing_metadata" in context:
+        metadata = context["processing_metadata"]
+        if "batch_number" in metadata:
+            parts.append(f"**Current batch number:** {metadata['batch_number']}")
+
+    return "\n\n".join(parts) if parts else "No specific context from previous batch."
 
 
 __all__ = [

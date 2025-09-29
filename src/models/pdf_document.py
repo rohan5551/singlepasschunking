@@ -9,6 +9,8 @@ class PDFPage:
     image: Optional[Image.Image] = None
     text_content: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
+    s3_url: Optional[str] = None  # S3 URL for original image
+    s3_thumbnail_url: Optional[str] = None  # S3 URL for thumbnail
 
 @dataclass
 class PDFDocument:

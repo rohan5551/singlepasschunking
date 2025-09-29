@@ -26,7 +26,7 @@ from src.models import (
 from src.models.chunk_schema import BatchProcessingResult, ChunkOutput
 from src.prompts import build_manual_prompt, get_default_manual_prompt
 from src.managers import DocumentLifecycleManager
-from src.database.document_lifecycle_models import ProcessingMode
+from src.database.document_lifecycle_models import ProcessingMode, ProcessingStatus
 from src.recovery import RestartManager
 
 load_dotenv()
@@ -165,6 +165,11 @@ def _process_manual_batches_job(session_id: str, prompt_template: str) -> None:
 
     task = session.processing_task
     document = session.document
+    lifecycle_tracking_enabled = lifecycle_manager is not None and session.document_id
+    lifecycle_stage_started = False
+    lifecycle_stage_name = "manual_llm_processing"
+    total_chunks_generated = 0
+    total_batches = 0
 
     try:
         if not session.batches:
@@ -172,6 +177,32 @@ def _process_manual_batches_job(session_id: str, prompt_template: str) -> None:
             task.error_message = "No batches available for processing"
             task.completed_at = datetime.utcnow()
             return
+
+        total_batches = len(session.batches)
+
+        if lifecycle_tracking_enabled:
+            try:
+                lifecycle_manager.update_document_status(
+                    session.document_id,
+                    ProcessingStatus.PROCESSING,
+                    summary_data={"total_batches": total_batches}
+                )
+                lifecycle_manager.track_stage_start(
+                    document_id=session.document_id,
+                    stage_name=lifecycle_stage_name,
+                    stage_data={
+                        "total_batches": total_batches,
+                        "prompt_template_preview": prompt_template[:500],
+                        "processing_mode": ProcessingMode.HUMAN_LOOP.value
+                    }
+                )
+                lifecycle_stage_started = True
+            except Exception as lifecycle_error:
+                logger.error(
+                    "Manual processing: Failed to update lifecycle status to processing for document %s: %s",
+                    session.document_id,
+                    lifecycle_error,
+                )
 
         processing_manager.context_manager.reset_context(document.file_path)
         lmm_processor = processing_manager.lmm_processor
@@ -181,8 +212,6 @@ def _process_manual_batches_job(session_id: str, prompt_template: str) -> None:
         task.completed_at = None
         task.error_message = None
         task.progress = 0.0
-
-        total_batches = len(session.batches)
 
         for index, batch_info in enumerate(session.batches, start=1):
             batch = batch_info["page_batch"]
@@ -205,6 +234,9 @@ def _process_manual_batches_job(session_id: str, prompt_template: str) -> None:
                     model=task.model or lmm_processor.DEFAULT_MODEL,
                     temperature=task.temperature,
                 )
+
+                chunk_count = len(lmm_result.chunks)
+                total_chunks_generated += chunk_count
 
                 # Store structured output data
                 batch.lmm_output = lmm_result.raw_output
@@ -321,6 +353,46 @@ def _process_manual_batches_job(session_id: str, prompt_template: str) -> None:
                 task.error_message = str(batch_error)
                 task.completed_at = datetime.utcnow()
 
+                if lifecycle_tracking_enabled:
+                    error_stage_data = {
+                        "failed_batch_number": batch.batch_number,
+                        "batch_id": batch.batch_id,
+                        "page_range": {
+                            "start_page": batch.start_page,
+                            "end_page": batch.end_page
+                        },
+                        "processed_batches": max(index - 1, 0),
+                        "total_batches": total_batches
+                    }
+                    try:
+                        lifecycle_manager.track_stage_error(
+                            document_id=session.document_id,
+                            stage_name=lifecycle_stage_name,
+                            error_message=str(batch_error),
+                            stage_data=error_stage_data
+                        )
+                    except Exception as lifecycle_error:
+                        logger.error(
+                            "Manual processing: Failed to record lifecycle stage error for document %s: %s",
+                            session.document_id,
+                            lifecycle_error,
+                        )
+                    try:
+                        lifecycle_manager.update_document_status(
+                            session.document_id,
+                            ProcessingStatus.ERROR,
+                            summary_data={
+                                "total_batches": total_batches,
+                                "total_chunks": total_chunks_generated
+                            }
+                        )
+                    except Exception as lifecycle_error:
+                        logger.error(
+                            "Manual processing: Failed to set document %s status to error: %s",
+                            session.document_id,
+                            lifecycle_error,
+                        )
+
                 # Register the failed task with processing_manager so it appears in the pipeline dashboard
                 with processing_manager._lock:
                     processing_manager.completed_tasks[task.task_id] = task
@@ -329,6 +401,51 @@ def _process_manual_batches_job(session_id: str, prompt_template: str) -> None:
         task.status = ProcessingStage.COMPLETED
         task.completed_at = datetime.utcnow()
         task.context_state = processing_manager.context_manager.get_context(document.file_path)
+
+        if lifecycle_tracking_enabled:
+            processing_duration = None
+            if task.started_at and task.completed_at:
+                processing_duration = (task.completed_at - task.started_at).total_seconds()
+
+            warnings_detected = 0
+            try:
+                warnings_detected = sum(
+                    len(getattr(batch_info.get("page_batch"), "warnings", []) or [])
+                    for batch_info in session.batches
+                )
+            except Exception:
+                warnings_detected = 0
+
+            stage_completion_data = {
+                "total_batches": total_batches,
+                "processed_batches": total_batches,
+                "total_chunks_generated": total_chunks_generated,
+                "processing_duration_seconds": processing_duration,
+                "warnings_detected": warnings_detected,
+                "prompt_template_preview": prompt_template[:500]
+            }
+
+            try:
+                if lifecycle_stage_started:
+                    lifecycle_manager.track_stage_completion(
+                        document_id=session.document_id,
+                        stage_name=lifecycle_stage_name,
+                        stage_data=stage_completion_data
+                    )
+                lifecycle_manager.update_document_status(
+                    session.document_id,
+                    ProcessingStatus.COMPLETED,
+                    summary_data={
+                        "total_batches": total_batches,
+                        "total_chunks": total_chunks_generated
+                    }
+                )
+            except Exception as lifecycle_error:
+                logger.error(
+                    "Manual processing: Failed to record lifecycle completion for document %s: %s",
+                    session.document_id,
+                    lifecycle_error,
+                )
 
         # Register the completed task with processing_manager so it appears in the pipeline dashboard
         with processing_manager._lock:
@@ -342,6 +459,52 @@ def _process_manual_batches_job(session_id: str, prompt_template: str) -> None:
         task.status = ProcessingStage.ERROR
         task.error_message = str(unexpected_error)
         task.completed_at = datetime.utcnow()
+
+        if lifecycle_tracking_enabled:
+            processed_batches = 0
+            try:
+                processed_batches = sum(
+                    1 for batch_info in session.batches
+                    if batch_info.get("page_batch") and batch_info["page_batch"].status == BatchStatus.COMPLETED
+                )
+            except Exception:
+                processed_batches = 0
+
+            error_stage_data = {
+                "processed_batches": processed_batches,
+                "total_batches": total_batches,
+                "context": "unexpected_error"
+            }
+
+            try:
+                lifecycle_manager.track_stage_error(
+                    document_id=session.document_id,
+                    stage_name=lifecycle_stage_name,
+                    error_message=str(unexpected_error),
+                    stage_data=error_stage_data
+                )
+            except Exception as lifecycle_error:
+                logger.error(
+                    "Manual processing: Failed to record unexpected lifecycle error for document %s: %s",
+                    session.document_id,
+                    lifecycle_error,
+                )
+
+            try:
+                lifecycle_manager.update_document_status(
+                    session.document_id,
+                    ProcessingStatus.ERROR,
+                    summary_data={
+                        "total_batches": total_batches,
+                        "total_chunks": total_chunks_generated
+                    }
+                )
+            except Exception as lifecycle_error:
+                logger.error(
+                    "Manual processing: Failed to set document %s status to error after unexpected failure: %s",
+                    session.document_id,
+                    lifecycle_error,
+                )
 
         # Register the failed task with processing_manager so it appears in the pipeline dashboard
         with processing_manager._lock:
@@ -534,6 +697,15 @@ async def create_manual_batches(session_id: str, request: Request):
     session = _get_manual_session(session_id)
     payload = await request.json()
     batches_payload = payload.get("batches", []) if isinstance(payload, dict) else []
+    overlap_pages = 0
+    if isinstance(payload, dict) and "overlap_pages" in payload:
+        overlap_candidate = payload.get("overlap_pages")
+        try:
+            overlap_pages = int(overlap_candidate)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Overlap pages must be a whole number")
+        if overlap_pages < 0:
+            raise HTTPException(status_code=400, detail="Overlap pages cannot be negative")
 
     if not isinstance(batches_payload, list) or not batches_payload:
         raise HTTPException(status_code=400, detail="No batches provided")
@@ -587,9 +759,17 @@ async def create_manual_batches(session_id: str, request: Request):
 
     session.batches = created_batches
 
+    if overlap_pages and largest_batch_size and overlap_pages >= largest_batch_size:
+        logger.warning(
+            "Manual batching: overlap_pages=%s trimmed to fit largest batch size=%s",
+            overlap_pages,
+            largest_batch_size,
+        )
+        overlap_pages = max(largest_batch_size - 1, 0)
+
     manual_config = SplitConfiguration(
         batch_size=largest_batch_size or 1,
-        overlap_pages=0
+        overlap_pages=overlap_pages
     )
 
     default_prompt = get_default_manual_prompt()
@@ -613,6 +793,7 @@ async def create_manual_batches(session_id: str, request: Request):
     manual_task.document.source_type = "manual"
     metadata = dict(manual_task.document.metadata or {})
     metadata["processing_mode"] = "human_loop"
+    metadata["overlap_pages"] = overlap_pages
     if session.display_name:
         metadata.setdefault("display_name", session.display_name)
     if session.source_path:
@@ -1017,6 +1198,354 @@ async def get_batch_images(task_id: str, batch_id: str):
         logger.error(f"Error getting batch images for task {task_id}, batch {batch_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@app.get("/documents", response_class=HTMLResponse)
+async def documents_page(request: Request):
+    """Documents history page"""
+    return templates.TemplateResponse("documents.html", {"request": request})
+
+
+@app.get("/api/documents")
+async def get_documents():
+    """Get all processed documents from database"""
+    if not lifecycle_manager:
+        # Return mock data for testing when database is not available
+        return JSONResponse(content={
+            "documents": [
+                {
+                    "document_id": "doc_sample_001",
+                    "original_filename": "sample_document.pdf",
+                    "status": "completed",
+                    "processing_mode": "auto",
+                    "created_at": "2024-09-29T10:00:00Z",
+                    "updated_at": "2024-09-29T10:05:00Z",
+                    "file_size_bytes": 1024000,
+                    "total_pages": 10,
+                    "s3_pdf_url": "s3://bucket/sample.pdf",
+                    "metadata": {"source": "test"}
+                },
+                {
+                    "document_id": "doc_sample_002",
+                    "original_filename": "another_document.pdf",
+                    "status": "processing",
+                    "processing_mode": "human_loop",
+                    "created_at": "2024-09-29T11:00:00Z",
+                    "updated_at": "2024-09-29T11:02:00Z",
+                    "file_size_bytes": 2048000,
+                    "total_pages": 25,
+                    "s3_pdf_url": "s3://bucket/another.pdf",
+                    "metadata": {"source": "web_upload"}
+                }
+            ],
+            "total_count": 2
+        })
+
+    try:
+        documents = lifecycle_manager.mongodb_manager.get_all_documents()
+
+        # Format the response for UI
+        document_list = []
+        for doc in documents:
+            document_list.append({
+                "document_id": doc.document_id,
+                "original_filename": doc.original_filename,
+                "status": doc.current_status.value,
+                "processing_mode": doc.processing_mode.value if doc.processing_mode else "unknown",
+                "created_at": doc.created_at.isoformat() if doc.created_at else None,
+                "updated_at": doc.updated_at.isoformat() if doc.updated_at else None,
+                "file_size_bytes": doc.file_size_bytes,
+                "total_pages": getattr(doc, 'total_pages', 0),
+                "s3_pdf_url": doc.s3_pdf_url,
+                "metadata": getattr(doc, 'metadata', {})
+            })
+
+        return JSONResponse(content={
+            "documents": document_list,
+            "total_count": len(document_list)
+        })
+
+    except Exception as e:
+        logger.error(f"Error fetching documents: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/documents/{document_id}")
+async def get_document_details(document_id: str):
+    """Get detailed information about a specific document"""
+    if not lifecycle_manager:
+        # Return mock data for testing when database is not available
+        if document_id in ["doc_sample_001", "doc_sample_002"]:
+            return JSONResponse(content={
+                "document": {
+                    "document_id": document_id,
+                    "original_filename": "sample_document.pdf" if document_id == "doc_sample_001" else "another_document.pdf",
+                    "status": "completed" if document_id == "doc_sample_001" else "processing",
+                    "processing_mode": "auto" if document_id == "doc_sample_001" else "human_loop",
+                    "created_at": "2024-09-29T10:00:00Z",
+                    "updated_at": "2024-09-29T10:05:00Z",
+                    "file_size_bytes": 1024000,
+                    "total_pages": 10,
+                    "s3_pdf_url": "s3://bucket/sample.pdf",
+                    "s3_images_folder": "s3://bucket/images/",
+                    "metadata": {"source": "test"}
+                },
+                "stages": [
+                    {
+                        "stage_id": "stage_001",
+                        "stage_name": "PDF Upload",
+                        "status": "completed",
+                        "started_at": "2024-09-29T10:00:00Z",
+                        "completed_at": "2024-09-29T10:01:00Z",
+                        "error_message": None,
+                        "metrics": {"duration": 60}
+                    },
+                    {
+                        "stage_id": "stage_002",
+                        "stage_name": "Image Conversion",
+                        "status": "completed",
+                        "started_at": "2024-09-29T10:01:00Z",
+                        "completed_at": "2024-09-29T10:03:00Z",
+                        "error_message": None,
+                        "metrics": {"images_created": 10}
+                    }
+                ],
+                "batches": [
+                    {
+                        "batch_id": "batch_001",
+                        "batch_number": 1,
+                        "start_page": 1,
+                        "end_page": 5,
+                        "status": "completed",
+                        "created_at": "2024-09-29T10:02:00Z",
+                        "processed_at": "2024-09-29T10:04:00Z",
+                        "chunk_count": 3,
+                        "s3_images_url": "s3://bucket/images/batch1/"
+                    },
+                    {
+                        "batch_id": "batch_002",
+                        "batch_number": 2,
+                        "start_page": 6,
+                        "end_page": 10,
+                        "status": "completed",
+                        "created_at": "2024-09-29T10:02:00Z",
+                        "processed_at": "2024-09-29T10:05:00Z",
+                        "chunk_count": 2,
+                        "s3_images_url": "s3://bucket/images/batch2/"
+                    }
+                ],
+                "chunks": [
+                    {
+                        "chunk_id": "chunk_001",
+                        "batch_id": "batch_001",
+                        "chunk_number": 1,
+                        "page_numbers": [1, 2],
+                        "content": "This is the content of the first chunk from pages 1-2. It contains important information about the document structure and...",
+                        "full_content_length": 1250,
+                        "metadata": {"headings": ["Introduction", "Overview"]}
+                    },
+                    {
+                        "chunk_id": "chunk_002",
+                        "batch_id": "batch_001",
+                        "chunk_number": 2,
+                        "page_numbers": [3, 4, 5],
+                        "content": "This is the second chunk containing details from pages 3-5. The content includes technical specifications and procedures...",
+                        "full_content_length": 2100,
+                        "metadata": {"headings": ["Technical Details", "Procedures"]}
+                    }
+                ],
+                "images": [
+                    {
+                        "page_number": 1,
+                        "s3_image_url": "s3://bucket/images/page_1.png",
+                        "image_size": "800x1200",
+                        "created_at": "2024-09-29T10:01:30Z"
+                    },
+                    {
+                        "page_number": 2,
+                        "s3_image_url": "s3://bucket/images/page_2.png",
+                        "image_size": "800x1200",
+                        "created_at": "2024-09-29T10:01:35Z"
+                    }
+                ]
+            })
+        else:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+    try:
+        # Get document record
+        doc = lifecycle_manager.mongodb_manager.get_document_by_id(document_id)
+        if not doc:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+        # Get processing stages
+        stages = lifecycle_manager.mongodb_manager.get_stages_by_document_id(document_id)
+
+        # Get batches
+        batches = lifecycle_manager.mongodb_manager.get_batches_by_document_id(document_id)
+
+        # Get chunks
+        chunks = lifecycle_manager.mongodb_manager.get_chunks_by_document_id(document_id)
+
+        # Get page images if available
+        images = lifecycle_manager.mongodb_manager.get_page_images_by_document_id(document_id)
+
+        # Format the response
+        document_details = {
+            "document": {
+                "document_id": doc.document_id,
+                "original_filename": doc.original_filename,
+                "status": doc.current_status.value,
+                "processing_mode": doc.processing_mode.value if doc.processing_mode else "unknown",
+                "created_at": doc.created_at.isoformat() if doc.created_at else None,
+                "updated_at": doc.updated_at.isoformat() if doc.updated_at else None,
+                "file_size_bytes": doc.file_size_bytes,
+                "total_pages": getattr(doc, 'total_pages', 0),
+                "s3_pdf_url": doc.s3_pdf_url,
+                "s3_images_folder": doc.s3_images_folder,
+                "metadata": getattr(doc, 'metadata', {})
+            },
+            "stages": [
+                {
+                    "stage_id": stage.stage_id,
+                    "stage_name": stage.stage_name,
+                    "status": stage.status.value,
+                    "started_at": stage.started_at.isoformat() if stage.started_at else None,
+                    "completed_at": stage.completed_at.isoformat() if stage.completed_at else None,
+                    "error_message": stage.error_message,
+                    "metrics": stage.metrics or {}
+                }
+                for stage in stages
+            ],
+            "batches": [
+                {
+                    "batch_id": batch.batch_id,
+                    "batch_number": batch.batch_number,
+                    "start_page": batch.start_page,
+                    "end_page": batch.end_page,
+                    "status": batch.status.value if batch.status else "unknown",
+                    "created_at": batch.created_at.isoformat() if batch.created_at else None,
+                    "processed_at": batch.processed_at.isoformat() if batch.processed_at else None,
+                    "chunk_count": batch.chunk_count or 0,
+                    "s3_images_url": batch.s3_images_url
+                }
+                for batch in batches
+            ],
+            "chunks": [
+                {
+                    "chunk_id": chunk.chunk_id,
+                    "batch_id": chunk.batch_id,
+                    "chunk_number": chunk.chunk_number,
+                    "page_numbers": chunk.page_numbers or [],
+                    "content": chunk.content[:500] + "..." if chunk.content and len(chunk.content) > 500 else chunk.content,  # Truncate for listing
+                    "full_content_length": len(chunk.content) if chunk.content else 0,
+                    "metadata": chunk.metadata or {}
+                }
+                for chunk in chunks
+            ],
+            "images": [
+                {
+                    "page_number": img.page_number,
+                    "s3_image_url": img.s3_image_url,
+                    "image_size": img.image_size,
+                    "created_at": img.created_at.isoformat() if img.created_at else None
+                }
+                for img in images
+            ]
+        }
+
+        return JSONResponse(content=document_details)
+
+    except Exception as e:
+        logger.error(f"Error fetching document details for {document_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/documents/{document_id}/chunks/{chunk_id}")
+async def get_chunk_full_content(document_id: str, chunk_id: str):
+    """Get full content of a specific chunk"""
+    if not lifecycle_manager:
+        # Return mock data for testing when database is not available
+        if chunk_id in ["chunk_001", "chunk_002"]:
+            chunk_content = {
+                "chunk_001": """This is the complete content of the first chunk from pages 1-2.
+
+# Introduction
+
+This document provides a comprehensive overview of the PDF processing system. The system is designed to handle large documents efficiently by breaking them down into manageable chunks while preserving the semantic structure and context.
+
+## Key Features
+- Automatic page batching
+- Intelligent chunk splitting
+- S3 storage integration
+- MongoDB persistence
+- Human-in-the-loop processing
+
+The introduction section covers the fundamental concepts and architecture decisions that drive the system's design.""",
+                "chunk_002": """This is the complete content of the second chunk from pages 3-5.
+
+# Technical Details
+
+The technical implementation relies on several key components:
+
+## PDF Processing
+- PyMuPDF for PDF manipulation
+- PIL for image processing
+- Custom batch management
+
+## Storage Layer
+- S3 for file storage
+- MongoDB for metadata
+- Redis for caching (optional)
+
+## Processing Pipeline
+1. PDF Upload and Validation
+2. Page Extraction and Conversion
+3. Batch Creation and Management
+4. Chunk Generation and Storage
+5. Quality Assurance and Review
+
+### Procedures
+
+The standard operating procedure for document processing includes:
+- Initial upload validation
+- Content analysis and categorization
+- Batch processing configuration
+- Quality control checkpoints
+- Final review and approval"""
+            }
+
+            return JSONResponse(content={
+                "chunk_id": chunk_id,
+                "document_id": document_id,
+                "batch_id": "batch_001",
+                "chunk_number": 1 if chunk_id == "chunk_001" else 2,
+                "content": chunk_content[chunk_id],
+                "page_numbers": [1, 2] if chunk_id == "chunk_001" else [3, 4, 5],
+                "metadata": {"headings": ["Introduction", "Overview"] if chunk_id == "chunk_001" else ["Technical Details", "Procedures"]}
+            })
+        else:
+            raise HTTPException(status_code=404, detail="Chunk not found")
+
+    try:
+        chunk = lifecycle_manager.mongodb_manager.get_chunk_by_id(chunk_id)
+        if not chunk or chunk.document_id != document_id:
+            raise HTTPException(status_code=404, detail="Chunk not found")
+
+        return JSONResponse(content={
+            "chunk_id": chunk.chunk_id,
+            "document_id": chunk.document_id,
+            "batch_id": chunk.batch_id,
+            "chunk_number": chunk.chunk_number,
+            "content": chunk.content,
+            "page_numbers": chunk.page_numbers or [],
+            "metadata": chunk.metadata or {}
+        })
+
+    except Exception as e:
+        logger.error(f"Error fetching chunk {chunk_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=True)

@@ -25,6 +25,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const processingStatusContainer = document.getElementById('processingStatusContainer');
     const processingProgressBar = document.getElementById('processingProgressBar');
     const processingStatusMessage = document.getElementById('processingStatusMessage');
+    const autoBatchSizeInput = document.getElementById('autoBatchSizeInput');
+    const autoOverlapInput = document.getElementById('autoOverlapInput');
+    const autoGenerateBatchesBtn = document.getElementById('autoGenerateBatchesBtn');
 
     const checkboxes = Array.from(container.querySelectorAll('.page-checkbox'));
 
@@ -35,6 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let manualDefaultPrompt = '';
     let processingPoller = null;
     let instructionsDirty = false;
+    let currentOverlap = 0;
 
     function escapeHtml(value) {
         if (typeof value !== 'string') {
@@ -69,6 +73,13 @@ document.addEventListener('DOMContentLoaded', () => {
         return checkboxes
             .filter(cb => cb.checked)
             .map(cb => parseInt(cb.getAttribute('data-page-number'), 10))
+            .sort((a, b) => a - b);
+    }
+
+    function getAllPageNumbers() {
+        return checkboxes
+            .map(cb => parseInt(cb.getAttribute('data-page-number'), 10))
+            .filter(page => Number.isInteger(page))
             .sort((a, b) => a - b);
     }
 
@@ -258,6 +269,20 @@ document.addEventListener('DOMContentLoaded', () => {
         manualTask = data?.task || null;
         manualBatches = Array.isArray(data?.batches) ? data.batches : [];
 
+        const config = manualTask?.config;
+        if (config) {
+            const configBatchSize = parseInt(config.batch_size ?? config.batchSize ?? '', 10);
+            if (autoBatchSizeInput && !Number.isNaN(configBatchSize) && configBatchSize > 0) {
+                autoBatchSizeInput.value = String(configBatchSize);
+            }
+
+            const configOverlap = parseInt(config.overlap_pages ?? config.overlapPages ?? '', 10);
+            if (autoOverlapInput && !Number.isNaN(configOverlap) && configOverlap >= 0) {
+                autoOverlapInput.value = String(configOverlap);
+                currentOverlap = configOverlap;
+            }
+        }
+
         if (data?.default_prompt) {
             manualDefaultPrompt = data.default_prompt;
         }
@@ -346,6 +371,75 @@ document.addEventListener('DOMContentLoaded', () => {
         resetSelection();
     });
 
+    autoGenerateBatchesBtn?.addEventListener('click', (event) => {
+        event.preventDefault();
+
+        const batchSize = parseInt(autoBatchSizeInput?.value ?? '0', 10);
+        const overlapValue = parseInt(autoOverlapInput?.value ?? '0', 10);
+
+        if (!Number.isInteger(batchSize) || batchSize <= 0) {
+            showToast('Batch size must be a positive whole number.', 'warning');
+            return;
+        }
+
+        if (!Number.isInteger(overlapValue) || overlapValue < 0) {
+            showToast('Overlap pages must be zero or greater.', 'warning');
+            return;
+        }
+
+        if (overlapValue >= batchSize) {
+            showToast('Overlap must be smaller than the batch size to ensure progress.', 'warning');
+            return;
+        }
+
+        const availablePages = getAllPageNumbers();
+        if (availablePages.length === 0) {
+            showToast('No pages available to generate batches.', 'warning');
+            return;
+        }
+
+        if (batches.length > 0) {
+            const confirmed = window.confirm('Auto generation will replace your existing batches. Continue?');
+            if (!confirmed) {
+                return;
+            }
+        }
+
+        const generatedBatches = [];
+        let startIndex = 0;
+        let batchNumber = 1;
+
+        while (startIndex < availablePages.length) {
+            const endIndex = Math.min(startIndex + batchSize, availablePages.length);
+            const batchPages = availablePages.slice(startIndex, endIndex);
+
+            if (batchPages.length === 0) {
+                break;
+            }
+
+            generatedBatches.push({
+                name: `Batch ${batchNumber}`,
+                pages: batchPages
+            });
+
+            if (endIndex >= availablePages.length) {
+                break;
+            }
+
+            startIndex = Math.max(endIndex - overlapValue, startIndex + 1);
+            batchNumber += 1;
+        }
+
+        batches = generatedBatches;
+        currentOverlap = overlapValue;
+        autoOverlapInput.value = String(overlapValue);
+        autoBatchSizeInput.value = String(batchSize);
+
+        resetSelection();
+        renderBatches();
+        showToast(`Created ${generatedBatches.length} batch${generatedBatches.length === 1 ? '' : 'es'} with an overlap of ${overlapValue}.`, 'success');
+    });
+
     batchListContainer.addEventListener('click', (event) => {
         const target = event.target.closest('button[data-index]');
         if (!target) {
@@ -374,6 +468,16 @@ document.addEventListener('DOMContentLoaded', () => {
             pages: selectedPages
         });
 
+        const overlapValue = parseInt(autoOverlapInput?.value ?? `${currentOverlap}`, 10);
+        if (Number.isInteger(overlapValue) && overlapValue >= 0) {
+            currentOverlap = overlapValue;
+        } else {
+            currentOverlap = 0;
+            if (autoOverlapInput) {
+                autoOverlapInput.value = '0';
+            }
+        }
+
         batchNameInput.value = '';
         resetSelection();
         renderBatches();
@@ -390,12 +494,20 @@ document.addEventListener('DOMContentLoaded', () => {
         finalizeBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Finalising...';
 
         try {
+            const overlapValue = parseInt(autoOverlapInput?.value ?? `${currentOverlap}`, 10);
+            if (Number.isInteger(overlapValue) && overlapValue >= 0) {
+                currentOverlap = overlapValue;
+            }
+
             const response = await fetch(`/api/manual/${sessionId}/create-batches`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ batches })
+                body: JSON.stringify({
+                    batches,
+                    overlap_pages: currentOverlap
+                })
             });
 
             if (!response.ok) {
@@ -458,6 +570,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const summaryStatus = data.task?.status || (completedBatches === totalBatches && totalBatches > 0 ? 'completed' : 'pending');
         const processingTime = data.task?.processing_time;
         const formattedTime = typeof processingTime === 'number' ? `${processingTime.toFixed(1)}s` : '—';
+        const configInfo = data.task?.config || {};
+        const configBatchSize = configInfo.batch_size ?? configInfo.batchSize ?? '—';
+        const configOverlap = configInfo.overlap_pages ?? configInfo.overlapPages ?? 0;
 
         meta.innerHTML = `
             <div class="row text-center g-3">
@@ -489,6 +604,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="text-center mt-3">
                 ${formatStatusBadge(summaryStatus)}
                 <small class="d-block text-muted mt-2">Task Status</small>
+                <small class="d-block text-muted">Batch size: ${configBatchSize} • Overlap: ${configOverlap}</small>
             </div>
         `;
         batchSummaryContainer.appendChild(meta);

@@ -656,6 +656,112 @@ class MongoDBManager:
                 "error": str(e)
             }
 
+    def get_all_documents(self) -> List[DocumentRecord]:
+        """
+        Get all documents from the database.
+
+        Returns:
+            List of all document records
+        """
+        try:
+            docs = list(self.documents_collection.find().sort("created_at", DESCENDING))
+            documents = []
+            for doc in docs:
+                doc.pop('_id', None)  # Remove MongoDB _id field
+                documents.append(DocumentRecord.from_dict(doc))
+            return documents
+        except Exception as e:
+            logger.error(f"Failed to get all documents: {e}")
+            return []
+
+    def get_document_by_id(self, document_id: str) -> Optional[DocumentRecord]:
+        """
+        Get a specific document by ID.
+
+        Args:
+            document_id: Document identifier
+
+        Returns:
+            Document record or None
+        """
+        return self.get_document(document_id)
+
+    def get_stages_by_document_id(self, document_id: str) -> List[ProcessingStageRecord]:
+        """
+        Get processing stages for a document.
+
+        Args:
+            document_id: Document identifier
+
+        Returns:
+            List of processing stage records
+        """
+        return self.get_document_stages(document_id)
+
+    def get_batches_by_document_id(self, document_id: str) -> List[BatchRecord]:
+        """
+        Get batches for a document.
+
+        Args:
+            document_id: Document identifier
+
+        Returns:
+            List of batch records
+        """
+        return self.get_document_batches(document_id)
+
+    def get_chunks_by_document_id(self, document_id: str) -> List[EnhancedChunkRecord]:
+        """
+        Get chunks for a document.
+
+        Args:
+            document_id: Document identifier
+
+        Returns:
+            List of chunk records
+        """
+        return self.get_document_chunks(document_id)
+
+    def get_page_images_by_document_id(self, document_id: str) -> List[Any]:
+        """
+        Get page images for a document.
+
+        Args:
+            document_id: Document identifier
+
+        Returns:
+            List of page image records (placeholder - would need to be implemented based on your image storage)
+        """
+        # This would need to be implemented based on how you store page images
+        # For now, returning empty list as images might be stored in S3 URLs in document record
+        try:
+            doc = self.get_document(document_id)
+            if doc and hasattr(doc, 'page_images') and doc.page_images:
+                return doc.page_images
+            return []
+        except Exception as e:
+            logger.error(f"Failed to get page images for document {document_id}: {e}")
+            return []
+
+    def get_chunk_by_id(self, chunk_id: str) -> Optional[EnhancedChunkRecord]:
+        """
+        Get a specific chunk by ID.
+
+        Args:
+            chunk_id: Chunk identifier
+
+        Returns:
+            Chunk record or None
+        """
+        try:
+            chunk_doc = self.chunks_collection.find_one({"chunk_id": chunk_id})
+            if chunk_doc:
+                return self._dict_to_chunk_record(chunk_doc)
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get chunk {chunk_id}: {e}")
+            return None
+
     def close(self):
         """Close database connection."""
         if hasattr(self, 'client'):

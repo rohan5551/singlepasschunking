@@ -1,130 +1,856 @@
-{% extends "base.html" %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Processor - Modern UI</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-{% block title %}PDF Processor - Upload{% endblock %}
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #2d3748;
+        }
 
-{% block content %}
-<div class="row justify-content-center">
-    <div class="col-md-8">
-        <div class="card shadow">
-            <div class="card-header bg-primary text-white">
-                <h4 class="mb-0">
-                    <i class="fas fa-upload me-2"></i>
-                    Process PDF Document
-                </h4>
+        /* Header */
+        .header {
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.5rem;
+        }
+
+        .nav-tabs {
+            display: flex;
+            gap: 2rem;
+        }
+
+        .nav-tab {
+            padding: 0.5rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+            position: relative;
+            color: #64748b;
+            text-decoration: none;
+        }
+
+        .nav-tab:hover {
+            color: #667eea;
+        }
+
+        .nav-tab.active {
+            color: #667eea;
+        }
+
+        .nav-tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -1rem;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-radius: 3px;
+        }
+
+        .user-section {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .notification-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            border: 1px solid #e2e8f0;
+            background: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .notification-btn:hover {
+            background: #f8fafc;
+            border-color: #667eea;
+        }
+
+        .notification-dot {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 8px;
+            height: 8px;
+            background: #ef4444;
+            border-radius: 50%;
+            border: 2px solid white;
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        /* Main Container */
+        .container {
+            max-width: 1400px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+        }
+
+        /* Welcome Section */
+        .welcome-section {
+            background: white;
+            border-radius: 20px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            animation: slideIn 0.5s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .welcome-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .welcome-title {
+            font-size: 2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .welcome-subtitle {
+            color: #64748b;
+            font-size: 1.1rem;
+        }
+
+        /* Processing Options */
+        .processing-options {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .option-card {
+            background: white;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+            cursor: pointer;
+            animation: slideUp 0.6s ease;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .option-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+        }
+
+        .option-header {
+            padding: 2rem;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .option-icon {
+            width: 60px;
+            height: 60px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        .option-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .option-description {
+            opacity: 0.9;
+            line-height: 1.6;
+        }
+
+        .option-body {
+            padding: 2rem;
+        }
+
+        .option-features {
+            list-style: none;
+            margin-bottom: 2rem;
+        }
+
+        .option-features li {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.75rem 0;
+            color: #64748b;
+        }
+
+        .feature-check {
+            width: 24px;
+            height: 24px;
+            background: #dcfce7;
+            color: #16a34a;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .option-btn {
+            width: 100%;
+            padding: 1rem 2rem;
+            border: none;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .option-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+
+        /* Upload Area */
+        .upload-area {
+            background: white;
+            border-radius: 20px;
+            padding: 3rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            display: none;
+        }
+
+        .upload-area.active {
+            display: block;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+
+        .upload-zone {
+            border: 2px dashed #cbd5e1;
+            border-radius: 12px;
+            padding: 3rem;
+            text-align: center;
+            transition: all 0.3s ease;
+            background: #f8fafc;
+            position: relative;
+        }
+
+        .upload-zone:hover {
+            border-color: #667eea;
+            background: #f0f4ff;
+        }
+
+        .upload-zone.dragover {
+            border-color: #667eea;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.05), rgba(118, 75, 162, 0.05));
+        }
+
+        .upload-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 1rem;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+            color: white;
+        }
+
+        .upload-text {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #1e293b;
+            margin-bottom: 0.5rem;
+        }
+
+        .upload-subtext {
+            color: #64748b;
+            margin-bottom: 2rem;
+        }
+
+        .upload-input {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .upload-btn {
+            padding: 0.75rem 2rem;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .upload-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+
+        /* Input Tabs */
+        .input-tabs {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 0.5rem;
+        }
+
+        .input-tab {
+            flex: 1;
+            padding: 1rem;
+            text-align: center;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+            color: #64748b;
+        }
+
+        .input-tab.active {
+            background: white;
+            color: #667eea;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .input-content {
+            display: none;
+        }
+
+        .input-content.active {
+            display: block;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: #1e293b;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-text {
+            font-size: 0.875rem;
+            color: #64748b;
+            margin-top: 0.25rem;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 1rem;
+            margin-top: 2rem;
+        }
+
+        .btn-primary {
+            flex: 1;
+            padding: 1rem 2rem;
+            border: none;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            flex: 1;
+            padding: 1rem 2rem;
+            border: 1px solid #e2e8f0;
+            background: white;
+            color: #64748b;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-secondary:hover {
+            background: #f8fafc;
+            border-color: #cbd5e1;
+        }
+
+        /* Progress indicator */
+        .loading-indicator {
+            display: none;
+            text-align: center;
+            margin-top: 2rem;
+        }
+
+        .loading-indicator.active {
+            display: block;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #e2e8f0;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .processing-options {
+                grid-template-columns: 1fr;
+            }
+
+            .nav-tabs {
+                gap: 1rem;
+                font-size: 0.9rem;
+            }
+
+            .header-content {
+                padding: 1rem;
+            }
+
+            .container {
+                padding: 0 1rem;
+            }
+
+            .btn-group {
+                flex-direction: column;
+            }
+
+            .input-tabs {
+                flex-direction: column;
+                gap: 0;
+            }
+
+            .input-tab {
+                border-radius: 0;
+            }
+
+            .input-tab:first-child {
+                border-radius: 8px 8px 0 0;
+            }
+
+            .input-tab:last-child {
+                border-radius: 0 0 8px 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <div class="logo">
+                <div class="logo-icon">📄</div>
+                <span>PDF Processor</span>
             </div>
-            <div class="card-body">
-                <p class="text-muted mb-4">
-                    Upload a PDF file, provide a local file path, or enter an S3 URL to process your document.
-                </p>
 
-                <form action="/process-pdf" method="post" enctype="multipart/form-data" id="uploadForm">
-                    <input type="hidden" name="process_mode" id="processModeInput" value="auto">
-                    <!-- File Upload Tab -->
-                    <ul class="nav nav-pills mb-3" id="pills-tab" role="tablist">
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link active" id="pills-upload-tab" data-bs-toggle="pill" data-bs-target="#pills-upload" type="button" role="tab">
-                                <i class="fas fa-upload me-1"></i>
-                                Upload File
-                            </button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="pills-local-tab" data-bs-toggle="pill" data-bs-target="#pills-local" type="button" role="tab">
-                                <i class="fas fa-folder-open me-1"></i>
-                                Local Path
-                            </button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="pills-s3-tab" data-bs-toggle="pill" data-bs-target="#pills-s3" type="button" role="tab">
-                                <i class="fab fa-aws me-1"></i>
-                                S3 URL
-                            </button>
-                        </li>
-                    </ul>
+            <nav class="nav-tabs">
+                <a href="/" class="nav-tab active">
+                    🏠 Home
+                </a>
+                <a href="/pipeline" class="nav-tab">
+                    ⚙️ Pipeline Dashboard
+                </a>
+                <a href="/documents" class="nav-tab">
+                    📊 Document History
+                </a>
+            </nav>
 
-                    <div class="tab-content" id="pills-tabContent">
-                        <!-- Upload File Tab -->
-                        <div class="tab-pane fade show active" id="pills-upload" role="tabpanel">
-                            <div class="mb-3">
-                                <label for="file" class="form-label">Choose PDF File</label>
-                                <input type="file" class="form-control" id="file" name="file" accept=".pdf">
-                                <div class="form-text">Select a PDF file from your computer (max 50MB)</div>
-                            </div>
-                        </div>
+            <div class="user-section">
+                <div class="notification-btn">
+                    🔔
+                    <span class="notification-dot"></span>
+                </div>
+                <div class="user-avatar">JD</div>
+            </div>
+        </div>
+    </header>
 
-                        <!-- Local Path Tab -->
-                        <div class="tab-pane fade" id="pills-local" role="tabpanel">
-                            <div class="mb-3">
-                                <label for="file_path" class="form-label">Local File Path</label>
-                                <input type="text" class="form-control" id="file_path" name="file_path"
-                                       placeholder="/path/to/your/document.pdf">
-                                <div class="form-text">Enter the full path to a PDF file on the server</div>
-                            </div>
-                        </div>
-
-                        <!-- S3 URL Tab -->
-                        <div class="tab-pane fade" id="pills-s3" role="tabpanel">
-                            <div class="mb-3">
-                                <label for="s3_url" class="form-label">S3 URL</label>
-                                <input type="text" class="form-control" id="s3_url" name="s3_url"
-                                       placeholder="s3://bucket-name/path/to/document.pdf">
-                                <div class="form-text">Enter the S3 URL (s3://bucket/key format)</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="row g-2">
-                        <div class="col-md-6 d-grid">
-                            <button type="submit" class="btn btn-primary btn-lg" id="submitBtn">
-                                <i class="fas fa-bolt me-2"></i>
-                                Process Automatically
-                            </button>
-                        </div>
-                        <div class="col-md-6 d-grid">
-                            <button type="submit" class="btn btn-outline-primary btn-lg" id="humanLoopSubmit">
-                                <i class="fas fa-user-check me-2"></i>
-                                Process with Human in Loop
-                            </button>
-                        </div>
-                    </div>
-                </form>
-
-                <!-- Progress indicator -->
-                <div id="loadingIndicator" class="mt-3" style="display: none;">
-                    <div class="text-center">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Loading...</span>
-                        </div>
-                        <div class="mt-2">Processing your PDF...</div>
-                    </div>
+    <!-- Main Content -->
+    <div class="container">
+        <!-- Welcome Section -->
+        <div class="welcome-section">
+            <div class="welcome-header">
+                <div>
+                    <h1 class="welcome-title">Welcome back! 👋</h1>
+                    <p class="welcome-subtitle">Choose how you'd like to process your PDF documents today</p>
                 </div>
             </div>
         </div>
 
-        <!-- Instructions Card -->
-        <div class="card mt-4">
-            <div class="card-header">
-                <h5 class="mb-0">
-                    <i class="fas fa-info-circle me-2"></i>
-                    Instructions
-                </h5>
+        <!-- Processing Options -->
+        <div class="processing-options">
+            <div class="option-card" onclick="startManualProcessing()">
+                <div class="option-header">
+                    <div class="option-icon">👤</div>
+                    <h3 class="option-title">Manual Processing</h3>
+                    <p class="option-description">Human-in-the-loop processing for documents requiring manual review and validation</p>
+                </div>
+                <div class="option-body">
+                    <ul class="option-features">
+                        <li>
+                            <span class="feature-check">✓</span>
+                            <span>Review each document individually</span>
+                        </li>
+                        <li>
+                            <span class="feature-check">✓</span>
+                            <span>Manual data validation & correction</span>
+                        </li>
+                        <li>
+                            <span class="feature-check">✓</span>
+                            <span>Custom field extraction</span>
+                        </li>
+                        <li>
+                            <span class="feature-check">✓</span>
+                            <span>Quality assurance at each step</span>
+                        </li>
+                    </ul>
+                    <button class="option-btn">Start Manual Processing</button>
+                </div>
             </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-4">
-                        <h6><i class="fas fa-upload text-primary me-2"></i>Upload File</h6>
-                        <p class="small text-muted">Select and upload a PDF file directly from your device.</p>
+
+            <div class="option-card" onclick="startBatchProcessing()">
+                <div class="option-header" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
+                    <div class="option-icon">🚀</div>
+                    <h3 class="option-title">Batch Processing</h3>
+                    <p class="option-description">Automated processing for multiple documents with AI-powered extraction</p>
+                </div>
+                <div class="option-body">
+                    <ul class="option-features">
+                        <li>
+                            <span class="feature-check">✓</span>
+                            <span>Process multiple PDFs simultaneously</span>
+                        </li>
+                        <li>
+                            <span class="feature-check">✓</span>
+                            <span>Automatic data extraction</span>
+                        </li>
+                        <li>
+                            <span class="feature-check">✓</span>
+                            <span>AI-powered OCR & parsing</span>
+                        </li>
+                        <li>
+                            <span class="feature-check">✓</span>
+                            <span>Export results in bulk</span>
+                        </li>
+                    </ul>
+                    <button class="option-btn" style="background: linear-gradient(135deg, #f59e0b, #d97706);">Start Batch Processing</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Upload Area (Initially Hidden) -->
+        <div class="upload-area" id="upload-area">
+            <h2 style="margin-bottom: 1.5rem; color: #1e293b;">Upload Documents</h2>
+
+            <form action="/process-pdf" method="post" enctype="multipart/form-data" id="uploadForm">
+                <input type="hidden" name="process_mode" id="processModeInput" value="auto">
+
+                <!-- Input Method Tabs -->
+                <div class="input-tabs">
+                    <div class="input-tab active" onclick="switchInputTab('upload')">
+                        📤 Upload File
                     </div>
-                    <div class="col-md-4">
-                        <h6><i class="fas fa-folder-open text-success me-2"></i>Local Path</h6>
-                        <p class="small text-muted">Provide the absolute path to a PDF file on the server.</p>
+                    <div class="input-tab" onclick="switchInputTab('local')">
+                        📁 Local Path
                     </div>
-                    <div class="col-md-4">
-                        <h6><i class="fab fa-aws text-warning me-2"></i>S3 URL</h6>
-                        <p class="small text-muted">Enter an S3 URL in the format: s3://bucket/key</p>
+                    <div class="input-tab" onclick="switchInputTab('s3')">
+                        ☁️ S3 URL
                     </div>
                 </div>
+
+                <!-- Upload File Content -->
+                <div class="input-content active" id="upload-content">
+                    <div class="upload-zone" id="upload-zone">
+                        <div class="upload-icon">📤</div>
+                        <p class="upload-text">Drag & Drop your PDF files here</p>
+                        <p class="upload-subtext">or click to browse from your computer</p>
+                        <input type="file" class="upload-input" id="file" name="file" accept=".pdf">
+                        <button type="button" class="upload-btn" onclick="document.getElementById('file').click()">Choose Files</button>
+                        <p style="margin-top: 1rem; color: #94a3b8; font-size: 0.875rem;">
+                            Supported formats: PDF • Max file size: 50MB
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Local Path Content -->
+                <div class="input-content" id="local-content">
+                    <div class="form-group">
+                        <label for="file_path" class="form-label">Local File Path</label>
+                        <input type="text" class="form-input" id="file_path" name="file_path" placeholder="/path/to/your/document.pdf">
+                        <div class="form-text">Enter the full path to a PDF file on the server</div>
+                    </div>
+                </div>
+
+                <!-- S3 URL Content -->
+                <div class="input-content" id="s3-content">
+                    <div class="form-group">
+                        <label for="s3_url" class="form-label">S3 URL</label>
+                        <input type="text" class="form-input" id="s3_url" name="s3_url" placeholder="s3://bucket-name/path/to/document.pdf">
+                        <div class="form-text">Enter the S3 URL (s3://bucket/key format)</div>
+                    </div>
+                </div>
+
+                <div class="btn-group">
+                    <button type="button" class="btn-secondary" onclick="cancelUpload()">Cancel</button>
+                    <button type="submit" class="btn-primary" id="submitBtn">
+                        🚀 Start Processing
+                    </button>
+                </div>
+            </form>
+
+            <!-- Loading Indicator -->
+            <div class="loading-indicator" id="loadingIndicator">
+                <div class="spinner"></div>
+                <div>Processing your PDF...</div>
             </div>
         </div>
     </div>
-</div>
-{% endblock %}
+
+    <script>
+        // Processing mode selection
+        let currentProcessingMode = 'auto';
+
+        function startManualProcessing() {
+            currentProcessingMode = 'human';
+            document.getElementById('processModeInput').value = 'human';
+            const uploadArea = document.getElementById('upload-area');
+            uploadArea.classList.add('active');
+            uploadArea.scrollIntoView({ behavior: 'smooth' });
+
+            // Update submit button text
+            const submitBtn = document.getElementById('submitBtn');
+            submitBtn.innerHTML = '👤 Start Manual Processing';
+        }
+
+        function startBatchProcessing() {
+            currentProcessingMode = 'auto';
+            document.getElementById('processModeInput').value = 'auto';
+            const uploadArea = document.getElementById('upload-area');
+            uploadArea.classList.add('active');
+            uploadArea.scrollIntoView({ behavior: 'smooth' });
+
+            // Update submit button text
+            const submitBtn = document.getElementById('submitBtn');
+            submitBtn.innerHTML = '🚀 Start Batch Processing';
+        }
+
+        function cancelUpload() {
+            document.getElementById('upload-area').classList.remove('active');
+
+            // Reset form
+            document.getElementById('uploadForm').reset();
+            document.getElementById('processModeInput').value = 'auto';
+            currentProcessingMode = 'auto';
+
+            // Reset submit button
+            const submitBtn = document.getElementById('submitBtn');
+            submitBtn.innerHTML = '🚀 Start Processing';
+        }
+
+        function switchInputTab(tabName) {
+            // Remove active from all tabs and content
+            document.querySelectorAll('.input-tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.input-content').forEach(content => content.classList.remove('active'));
+
+            // Add active to selected tab and content
+            event.target.classList.add('active');
+            document.getElementById(tabName + '-content').classList.add('active');
+
+            // Clear other form fields
+            if (tabName !== 'upload') {
+                document.getElementById('file').value = '';
+            }
+            if (tabName !== 'local') {
+                document.getElementById('file_path').value = '';
+            }
+            if (tabName !== 's3') {
+                document.getElementById('s3_url').value = '';
+            }
+        }
+
+        // Drag and Drop functionality
+        const uploadZone = document.getElementById('upload-zone');
+        if (uploadZone) {
+            uploadZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadZone.classList.add('dragover');
+            });
+
+            uploadZone.addEventListener('dragleave', () => {
+                uploadZone.classList.remove('dragover');
+            });
+
+            uploadZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                uploadZone.classList.remove('dragover');
+
+                const files = e.dataTransfer.files;
+                if (files.length > 0 && files[0].type === 'application/pdf') {
+                    document.getElementById('file').files = files;
+                    // Update upload zone to show selected file
+                    const uploadText = uploadZone.querySelector('.upload-text');
+                    uploadText.textContent = `Selected: ${files[0].name}`;
+                }
+            });
+        }
+
+        // File input change handler
+        document.getElementById('file').addEventListener('change', function(e) {
+            if (e.target.files.length > 0) {
+                const uploadText = uploadZone.querySelector('.upload-text');
+                uploadText.textContent = `Selected: ${e.target.files[0].name}`;
+            }
+        });
+
+        // Form submission handler
+        document.getElementById('uploadForm').addEventListener('submit', function(e) {
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            loadingIndicator.classList.add('active');
+
+            // Hide the upload area
+            const uploadArea = document.getElementById('upload-area');
+            uploadArea.style.opacity = '0.5';
+            uploadArea.style.pointerEvents = 'none';
+        });
+    </script>
+</body>
+</html>

@@ -1,6 +1,7 @@
 import math
 import logging
 import os
+import re
 import uuid
 from typing import List, Optional, Tuple
 from datetime import datetime
@@ -167,7 +168,8 @@ class PDFSplitter:
         # Create batch object
         # Create a URL-safe batch id so it can be used in API routes without
         # breaking the path structure (e.g. temporary files that live in /tmp)
-        safe_doc_id = os.path.splitext(os.path.basename(document.file_path))[0]
+        base_name = os.path.splitext(os.path.basename(document.file_path))[0]
+        safe_doc_id = re.sub(r"[^A-Za-z0-9_-]", "-", base_name).strip("-") or uuid.uuid4().hex
         batch_identifier = f"{safe_doc_id}_batch_{batch_number}_{uuid.uuid4().hex[:8]}"
 
         batch = PageBatch(

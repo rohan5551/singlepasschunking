@@ -45,7 +45,8 @@ def test_database_writer():
             document=test_document,
             config=SplitConfiguration(),
             status=None,
-            prompt="Test prompt"
+            prompt="Test prompt",
+            lifecycle_document_id=None
         )
 
         test_batch = PageBatch(

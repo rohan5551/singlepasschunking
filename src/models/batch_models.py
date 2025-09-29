@@ -115,6 +115,7 @@ class ProcessingTask:
     prompt: Optional[str] = None
     model: Optional[str] = None
     temperature: float = 0.1
+    lifecycle_document_id: Optional[str] = None
     context_state: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
@@ -166,6 +167,7 @@ class ProcessingTask:
             "prompt": self.prompt,
             "model": self.model,
             "temperature": self.temperature,
+            "lifecycle_document_id": self.lifecycle_document_id,
             "context_state": self.context_state
         }
 

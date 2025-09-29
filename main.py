@@ -785,6 +785,7 @@ async def create_manual_batches(session_id: str, request: Request):
         prompt=default_prompt,
         model=processing_manager.lmm_processor.DEFAULT_MODEL,
         temperature=processing_manager.lmm_processor.temperature,
+        lifecycle_document_id=session.document_id,
     )
 
     manual_task.document.file_path = (
@@ -792,6 +793,8 @@ async def create_manual_batches(session_id: str, request: Request):
     )
     manual_task.document.source_type = "manual"
     metadata = dict(manual_task.document.metadata or {})
+    if session.document_id:
+        metadata.setdefault("document_id", session.document_id)
     metadata["processing_mode"] = "human_loop"
     metadata["overlap_pages"] = overlap_pages
     if session.display_name:

@@ -108,21 +108,23 @@ function updateSummaryStats(documents) {
 }
 
 async function showDocumentDetails(documentId) {
+    redirectToPipeline(documentId);
+}
+
+function redirectToPipeline(documentId) {
+    if (!documentId) {
+        alert('Document identifier is missing for this record.');
+        return;
+    }
+
     try {
-        const response = await fetch(`/api/documents/${documentId}`);
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        populateDocumentDetailModal(data);
-
-        const modal = new bootstrap.Modal(document.getElementById('documentDetailModal'));
-        modal.show();
-
+        const targetUrl = new URL('/pipeline', window.location.origin);
+        targetUrl.searchParams.set('documentId', documentId);
+        targetUrl.searchParams.set('view', 'fullscreen');
+        window.location.href = targetUrl.toString();
     } catch (error) {
-        console.error('Error loading document details:', error);
-        alert('Failed to load document details: ' + error.message);
+        console.error('Failed to redirect to pipeline view:', error);
+        alert('Unable to open the processing pipeline for this document.');
     }
 }
 

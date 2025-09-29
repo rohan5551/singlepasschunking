@@ -317,6 +317,10 @@ let selectedStage = null;
 let selectedTaskId = null;
 let selectedFiles = [];
 let updateInterval = null;
+let pendingDocumentIdFromQuery = null;
+let pendingDocumentViewMode = 'auto';
+let pendingDocumentNavigationHandled = false;
+let pendingDocumentNavigationAttempts = 0;
 
 // Stage configuration
 const STAGES = {
@@ -333,8 +337,25 @@ const STAGES = {
 // Initialize dashboard
 document.addEventListener('DOMContentLoaded', function() {
     initializeUploadModal();
+    initializeQueryNavigation();
     startStatusUpdates();
 });
+
+function initializeQueryNavigation() {
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const documentIdParam = params.get('documentId');
+        if (documentIdParam) {
+            pendingDocumentIdFromQuery = documentIdParam;
+            const viewParam = params.get('view');
+            if (viewParam) {
+                pendingDocumentViewMode = viewParam;
+            }
+        }
+    } catch (error) {
+        console.error('Failed to parse pipeline query parameters:', error);
+    }
+}
 
 function handleErrorStatusClick() {
     const errorCountEl = document.getElementById('errorCount');
@@ -528,6 +549,121 @@ function updateDashboard() {
             console.error('Error updating task output:', error);
         });
     }
+    handlePendingDocumentNavigation();
+}
+
+function handlePendingDocumentNavigation() {
+    if (!pendingDocumentIdFromQuery || pendingDocumentNavigationHandled) {
+        return;
+    }
+
+    const result = findTaskByDocumentId(pendingDocumentIdFromQuery);
+    if (!result) {
+        pendingDocumentNavigationAttempts += 1;
+        if (pendingDocumentNavigationAttempts > 5) {
+            showAlert(
+                `Unable to locate document ${pendingDocumentIdFromQuery} in the active pipeline list. It may have been cleared or is unavailable.`,
+                'warning'
+            );
+            pendingDocumentNavigationHandled = true;
+            clearQueryParamsAfterNavigation();
+        }
+        return;
+    }
+
+    pendingDocumentNavigationHandled = true;
+    pendingDocumentNavigationAttempts = 0;
+
+    const { taskId, task } = result;
+    const stageKey = getStageKeyForTask(task);
+
+    if (stageKey) {
+        selectStage(stageKey);
+        selectedTaskId = taskId;
+        updateStageDetails();
+    }
+
+    const openFullscreen = task?.status === 'completed' || pendingDocumentViewMode === 'fullscreen';
+
+    if (openFullscreen) {
+        setTimeout(() => {
+            openFullscreenView(taskId);
+            scrollStageDetailsIntoView();
+        }, 200);
+    } else {
+        updateTaskOutput().catch(error => {
+            console.error('Error updating task output during navigation:', error);
+        });
+        scrollStageDetailsIntoView();
+    }
+
+    clearQueryParamsAfterNavigation();
+}
+
+function findTaskByDocumentId(documentId) {
+    if (!documentId) {
+        return null;
+    }
+
+    const entries = Object.entries(allTasks || {});
+    for (const [taskId, task] of entries) {
+        if (!task) {
+            continue;
+        }
+
+        const lifecycleId = task.lifecycle_document_id
+            || task.document_info?.metadata?.document_id
+            || task.document_info?.metadata?.documentId;
+
+        if (lifecycleId && lifecycleId === documentId) {
+            return { taskId, task };
+        }
+    }
+
+    return null;
+}
+
+function getStageKeyForTask(task) {
+    if (!task) {
+        return null;
+    }
+
+    if (task.status === 'error') {
+        return 'error';
+    }
+
+    if (STAGES[task.status]) {
+        return task.status;
+    }
+
+    return 'completed';
+}
+
+function scrollStageDetailsIntoView() {
+    const detailsSection = document.getElementById('stageDetailsSection');
+    if (detailsSection) {
+        detailsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+}
+
+function clearQueryParamsAfterNavigation() {
+    if (typeof window === 'undefined' || !window.history || !window.history.replaceState) {
+        pendingDocumentIdFromQuery = null;
+        pendingDocumentViewMode = 'auto';
+        return;
+    }
+
+    try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('documentId');
+        url.searchParams.delete('view');
+        window.history.replaceState({}, document.title, url.pathname + url.search + url.hash);
+    } catch (error) {
+        console.error('Failed to clear pipeline query parameters:', error);
+    }
+
+    pendingDocumentIdFromQuery = null;
+    pendingDocumentViewMode = 'auto';
 }
 
 function updateStatusCards() {

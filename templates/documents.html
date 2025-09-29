@@ -881,17 +881,24 @@
         }
 
         function viewDocument(documentId) {
-            // Load document details and show modal
-            fetch(`/api/documents/${documentId}`)
-                .then(response => response.json())
-                .then(data => {
-                    populateDocumentDetails(data);
-                    showModal('documentDetailModal');
-                })
-                .catch(error => {
-                    console.error('Error loading document details:', error);
-                    alert('Failed to load document details');
-                });
+            navigateToPipeline(documentId);
+        }
+
+        function navigateToPipeline(documentId) {
+            if (!documentId) {
+                alert('Document identifier is missing for this record.');
+                return;
+            }
+
+            try {
+                const targetUrl = new URL('/pipeline', window.location.origin);
+                targetUrl.searchParams.set('documentId', documentId);
+                targetUrl.searchParams.set('view', 'fullscreen');
+                window.location.href = targetUrl.toString();
+            } catch (error) {
+                console.error('Failed to redirect to pipeline view:', error);
+                alert('Unable to open the processing pipeline for this document.');
+            }
         }
 
         function populateDocumentDetails(data) {

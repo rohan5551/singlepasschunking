@@ -173,7 +173,8 @@ class ProcessingManager:
             status=ProcessingStage.UPLOAD,
             prompt=prompt,
             model=model or self.lmm_processor.DEFAULT_MODEL,
-            temperature=temperature if temperature is not None else self.lmm_processor.temperature
+            temperature=temperature if temperature is not None else self.lmm_processor.temperature,
+            lifecycle_document_id=lifecycle_document_id
         )
 
         with self._lock:
@@ -296,6 +297,13 @@ class ProcessingManager:
 
             # Update task with real document
             task.document = document
+            if lifecycle_document_id:
+                try:
+                    current_metadata = dict(task.document.metadata or {})
+                    current_metadata.setdefault("document_id", lifecycle_document_id)
+                    task.document.metadata = current_metadata
+                except Exception:
+                    logger.debug("Unable to merge lifecycle document metadata for task %s", task_id)
             task.model = model or self.lmm_processor.DEFAULT_MODEL
             task.prompt = prompt
             task.temperature = temperature if temperature is not None else self.lmm_processor.temperature
